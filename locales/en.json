@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "Ingtalk",
+    "NSLocationWhenInUseUsageDescription": "Ingtalk uses your location only while you use the app to suggest nearby conversation partners.",
+    "NSPhotoLibraryUsageDescription": "Ingtalk accesses only the photos you choose for profiles, posts, and chats."
+  },
+  "android": {
+    "app_name": "Ingtalk"
+  }
+}

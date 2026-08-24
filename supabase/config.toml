@@ -1,0 +1,2 @@
+[functions.push-chat-notification]
+verify_jwt = false

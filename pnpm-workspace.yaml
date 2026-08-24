@@ -1,0 +1,16 @@
+packages:
+  - admin
+
+onlyBuiltDependencies:
+  - '@sentry/cli'
+  - esbuild
+
+minimumReleaseAgeExclude:
+  - expo-constants@18.0.14
+  - '@expo/cli@54.0.27'
+  - expo-file-system@19.0.24
+  - expo-modules-autolinking@3.0.27
+  - expo@54.0.37
+
+overrides:
+  expo-constants: 18.0.14

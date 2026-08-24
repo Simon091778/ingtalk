@@ -1,0 +1,10 @@
+{
+  "ios": {
+    "CFBundleDisplayName": "잉톡",
+    "NSLocationWhenInUseUsageDescription": "잉톡은 가까운 지역의 대화 상대를 추천하기 위해 앱 사용 중에만 위치를 확인합니다.",
+    "NSPhotoLibraryUsageDescription": "잉톡은 사용자가 직접 선택한 프로필, 게시글 및 대화 사진만 등록합니다."
+  },
+  "android": {
+    "app_name": "잉톡"
+  }
+}

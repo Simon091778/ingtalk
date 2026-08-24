@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "832692158730",
+    "project_id": "ingtalk",
+    "storage_bucket": "ingtalk.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:832692158730:android:00322ebe1f7d81598efaf3",
+        "android_client_info": {
+          "package_name": "kr.ingtalk.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyKTHf1qXQnSiKc11-xbzL4_ezkl78MHI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
