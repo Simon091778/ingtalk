@@ -30,18 +30,18 @@ The operator does not broker or guarantee offline meetings, user payments, or th
 10. Governing law
 These Terms are governed by the laws of the Republic of Korea. Disputes are resolved by the court having jurisdiction under Korean civil procedure law.`
 
-export const PRIVACY_POLICY_TEXT_EN = `Effective date: August 23, 2026
+export const PRIVACY_POLICY_TEXT_EN = `Effective date: August 24, 2026
 
 Itembus processes personal information for Ingtalk as follows.
 
 1. Data and purposes
-Anonymous user ID, nickname, age, and gender support profiles, age restrictions, and matching. Talk cards, posts, comments, reactions, chat activity, reports, and blocks support the service, disputes, and safety. Installation ID, app and OS version, push token, access records, and error records support wallet recovery, notifications, diagnostics, and abuse prevention. Photos and location are processed only when selected.
+Anonymous user ID, nickname, age, and gender support profiles, age restrictions, and matching. Talk cards, posts, comments, reactions, chat activity, reports, and blocks support the service, disputes, and safety. Installation ID, app and OS version, push token, access records, and error records support wallet recovery, notifications, diagnostics, and abuse prevention. Photos and location are processed only when selected. The Google Mobile Ads SDK may automatically collect and share an approximate location inferred from IP address, app interactions such as launches, taps, ad views and video views, SDK diagnostics, and device identifiers such as the advertising ID and app set ID for ad delivery, measurement, analytics, and fraud prevention. Ad completion, ad transaction identifiers, and point-reward records support the 50-point reward, the 24-hour limit, and duplicate-reward prevention.
 
 2. Retention
 Profiles and general service data are kept until account deletion. User-accessible chats are kept up to 30 days; closed support inquiries and error logs up to 90 days; safety and enforcement evidence up to one year; and device-wallet and repeat-registration prevention records up to one year after last use or withdrawal. Legally required or disputed records may be isolated for the necessary period and then irreversibly deleted.
 
 3. Processors and international processing
-Supabase processes authentication, database, storage, and realtime communications in Seoul. Expo/650 Industries, Sentry/Functional Software, and Google Firebase may process app, device, push-token, and error data in the United States or other infrastructure locations for builds, updates, push delivery, and diagnostics. Transfers use encrypted networks.
+Supabase processes authentication, database, storage, and realtime communications in Seoul. Expo/650 Industries, Sentry/Functional Software, Google Firebase, and Google AdMob may process app, device, push-token, error, advertising-interaction, and identifier data in the United States or other infrastructure locations for builds, updates, push delivery, diagnostics, ad delivery, measurement, and fraud prevention. Transfers use encrypted networks. Google's privacy practices are available at https://policies.google.com/privacy. Refusing or restricting related processing may limit push, diagnostics, advertising, or ad-reward features.
 
 4. Optional permissions
 Location supports distance-based cards; precise coordinates are not shown to users. Notifications announce chat requests and messages. Only photos selected through the system picker are processed. Refusal limits only the related feature.

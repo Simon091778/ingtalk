@@ -3,3 +3,6 @@ verify_jwt = false
 
 [functions.revenuecat-webhook]
 verify_jwt = false
+
+[functions.admob-reward]
+verify_jwt = false

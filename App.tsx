@@ -20,6 +20,7 @@ import { SupportCenter } from './src/components/SupportCenter'
 import { RegionalSelector, RegionalSettings } from './src/components/RegionalSettings'
 import { PointPurchase } from './src/components/PointPurchase'
 import { PointDetails } from './src/components/PointDetails'
+import { RewardedAdButton } from './src/components/RewardedAdButton'
 import { SwipeDismissView } from './src/components/SwipeDismissView'
 import { DropdownChevron } from './src/components/DropdownChevron'
 import { AgePickerSheet } from './src/components/AgePickerSheet'
@@ -524,12 +525,6 @@ function Profile({ guestProfile, onEdit, onCharge, onDeleted, refreshKey }: { gu
       `${result?.awarded ? '출석체크 보상 50P가 충전되었습니다.' : '마지막 출석체크 후 24시간이 지나면 다시 받을 수 있어요.'}\n\n${rewardGuide}`,
     )
   }
-  const previewRewardedAd = () => Alert.alert(
-    language === 'ko' ? '광고 시청 준비 중' : 'Rewarded ad coming soon',
-    language === 'ko'
-      ? '광고 식별자를 연결한 뒤, 광고를 끝까지 시청하면 50P가 지급됩니다.'
-      : 'After the ad identifiers are connected, watching the full ad will grant 50P.',
-  )
   return <ScrollView contentContainerStyle={[styles.page, styles.profilePageLayout, Platform.OS === 'ios' && styles.profilePageIos]}>
     <View style={[styles.profilePageHeader, Platform.OS === 'ios' && styles.profilePageHeaderIos]}><Text style={[styles.pageTitle, styles.profilePageTitle]}>{t('myProfile')}</Text><Text style={styles.profilePageSubtitle}>{t('profileSubtitle')}</Text></View>
     <Pressable accessibilityRole="button" accessibilityLabel={t('editProfile')} onPress={onEdit} style={({ pressed }) => [styles.profileCard, Platform.OS === 'ios' && styles.profileCardIos, pressed && styles.profileCardPressed]}>
@@ -545,7 +540,7 @@ function Profile({ guestProfile, onEdit, onCharge, onDeleted, refreshKey }: { gu
       <Pressable onPress={onCharge} style={styles.chargeButton} testID="open-point-purchase"><Text style={styles.chargeButtonText}>{t('charge')}</Text><Text style={styles.chargeButtonArrow}>›</Text></Pressable>
       <View style={styles.rewardActionRow}>
         <Pressable accessibilityRole="button" accessibilityLabel={language === 'ko' ? '출석체크 50포인트 받기' : 'Claim 50 points for daily check-in'} disabled={attendanceAvailable !== true || claimingAttendance} onPress={() => void claimAttendance()} style={[styles.rewardActionButton, styles.attendanceButton, (attendanceAvailable !== true || claimingAttendance) && styles.attendanceButtonDisabled]}><Text style={styles.rewardActionIcon}>✓</Text><Text numberOfLines={2} style={styles.attendanceButtonText}>{claimingAttendance ? '출석 확인 중…' : attendanceAvailable === null ? '출석 상태 확인 중…' : attendanceAvailable ? '출석체크 · +50P' : '출석 완료 · 24시간 후'}</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel={language === 'ko' ? '광고 시청으로 50포인트 받기' : 'Watch an ad for 50 points'} onPress={previewRewardedAd} style={[styles.rewardActionButton, styles.rewardedAdButton]}><Text style={[styles.rewardActionIcon, styles.rewardedAdIcon]}>▶</Text><Text numberOfLines={1} style={styles.rewardedAdButtonText}>{language === 'ko' ? '광고 시청 · +50P' : 'Watch ad · +50P'}</Text></Pressable>
+        <RewardedAdButton language={language} onBalanceChanged={setPoints} />
       </View>
     </View>
     <RegionalSettings />
