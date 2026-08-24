@@ -1,30 +1,31 @@
 잉톡 공개 약관 사이트 배포 안내
 
-1. 이 폴더 안의 파일을 기존 웹서버의 /ingtalk/ 폴더에 업로드합니다.
-2. 서버가 UTF-8, Classic ASP, 서버측 include를 지원하는지 확인합니다.
-3. 업로드 후 아래 주소를 휴대전화와 PC에서 확인합니다.
-   https://itembus.com/ingtalk/
-   https://itembus.com/ingtalk/terms.asp
-   https://itembus.com/ingtalk/privacy.asp
-   https://itembus.com/ingtalk/deletion.asp
-   https://itembus.com/ingtalk/support.asp
-   https://itembus.com/ingtalk/community.asp
-   https://itembus.com/ingtalk/child-safety
-4. 각 페이지가 로그인 없이 열리고 HTTPS 인증서 오류가 없어야 합니다.
-5. store/STORE_LISTING_KO.md에 반영된 URL을 App Store Connect와 Google Play Console에 입력합니다.
+현재 공개 사이트는 Classic ASP 서버가 아니라 Vercel의 정적 사이트를 사용합니다.
+이 폴더의 ASP 파일은 이전 배포 원본 보존용이며 현재 스토어 URL로 사용하지 않습니다.
+
+현재 배포 소스
+- 정적 사이트 폴더: github-site/
+- 변환 명령: node scripts/build-github-site.mjs
+- GitHub 저장소: https://github.com/Simon091778/ingtalk
+- Vercel 프로젝트: https://vercel.com/yongilnim/ingtalk
+
+공개 확인 URL
+- 홈페이지: https://ingtalk.vercel.app/
+- 이용약관: https://ingtalk.vercel.app/terms.html
+- 개인정보처리방침: https://ingtalk.vercel.app/privacy.html
+- 계정 및 데이터 삭제: https://ingtalk.vercel.app/deletion.html
+- 고객지원: https://ingtalk.vercel.app/support.html
+- 커뮤니티 운영정책: https://ingtalk.vercel.app/community.html
+- 아동 안전 표준: https://ingtalk.vercel.app/child-safety/
 
 Google Play 데이터 보안 입력 URL
-- 계정 URL 삭제: https://www.itembus.com/ingtalk/deletion.asp
-- 데이터 URL 삭제: https://www.itembus.com/ingtalk/deletion.asp
-- 아동 안전 표준 URL: https://www.itembus.com/ingtalk/child-safety
+- 계정 삭제 URL: https://ingtalk.vercel.app/deletion.html
+- 데이터 삭제 URL: https://ingtalk.vercel.app/deletion.html
+- 아동 안전 표준 URL: https://ingtalk.vercel.app/child-safety/
 
-필수 업로드 파일
-default.asp, index.asp, terms.asp, privacy.asp, deletion.asp, support.asp, community.asp,
-child-safety/default.asp, _header.asp, _footer.asp, styles.css
+언어별 URL
+- 한국어 홈페이지: https://ingtalk.vercel.app/
+- 영문 홈페이지: https://ingtalk.vercel.app/en/
+- Google Play 영문 계정 삭제 링크: https://ingtalk.vercel.app/en/deletion.html
 
-default.asp는 /ingtalk/ 폴더 주소로 접속했을 때 index.asp로 이동시키는 기본 문서입니다.
-
-언어 선택
-- 모든 페이지 상단에서 한국어와 English를 선택할 수 있습니다.
-- 선택 언어는 URL의 ?lang=ko 또는 ?lang=en과 보안 쿠키에 저장됩니다.
-- Google Play 영문 링크 예: https://www.itembus.com/ingtalk/deletion.asp?lang=en
+배포 전 각 페이지가 로그인 없이 열리고 HTTPS 인증서 오류가 없는지 휴대전화와 PC에서 확인합니다.

@@ -12,11 +12,12 @@
 - 주소: 강원특별자치도 속초시 동해대로 4236, 2층 215호
 - 연락처: 1555-1645
 - 지원 이메일: itembus@itembus.com
-- 개인정보처리방침 URL: `https://itembus.com/ingtalk/privacy.asp`
-- 계정 삭제 URL: `https://itembus.com/ingtalk/deletion.asp`
-- 이용약관 URL: `https://itembus.com/ingtalk/terms.asp`
-- 고객지원 URL: `https://itembus.com/ingtalk/support.asp`
-- 아동 안전 표준 URL: `https://www.itembus.com/ingtalk/child-safety`
+- 홈페이지 URL: `https://ingtalk.vercel.app/`
+- 개인정보처리방침 URL: `https://ingtalk.vercel.app/privacy.html`
+- 계정 삭제 URL: `https://ingtalk.vercel.app/deletion.html`
+- 이용약관 URL: `https://ingtalk.vercel.app/terms.html`
+- 고객지원 URL: `https://ingtalk.vercel.app/support.html`
+- 아동 안전 표준 URL: `https://ingtalk.vercel.app/child-safety/`
 
 ## Apple 홍보 문구
 

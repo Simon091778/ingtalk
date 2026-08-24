@@ -8,8 +8,8 @@
 - 아동 대상 여부: `아동용으로 설계되지 않음`
 - 콘텐츠 등급 설문: 사용자 제작 콘텐츠, 익명 게시판, 1:1 메시지, 이용자 상호작용, 위치 기반 거리 표시를 사실대로 선택
 - 앱 설명 첫 부분과 심사 메모: `만 19세 이상 이용자만 사용할 수 있음` 명시
-- 개인정보처리방침: `https://itembus.com/ingtalk/privacy.asp`
-- 계정 삭제: `https://itembus.com/ingtalk/deletion.asp`
+- 개인정보처리방침: `https://ingtalk.vercel.app/privacy.html`
+- 계정 삭제: `https://ingtalk.vercel.app/deletion.html`
 
 ## App Store Connect
 
