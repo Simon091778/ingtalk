@@ -12,7 +12,6 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "orientation": "portrait",
     "userInterfaceStyle": "light",
     "locales": {
       "ko": "./locales/ko.json",

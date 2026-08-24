@@ -772,7 +772,7 @@ export default function App() {
 
   return (
     <InsetSafeAreaView edges={appSafeAreaEdges} style={[styles.safe, styles.cleanPage]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FFF9F5" />
+      <StatusBar barStyle="dark-content" />
       <View style={styles.flex}>{content}</View>
       <InsetSafeAreaView edges={tabBarEdges} style={[styles.tabBar, styles.cleanTabBar]}>
         {nav.map(([key, icon, label]) => (
