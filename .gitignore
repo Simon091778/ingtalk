@@ -13,5 +13,6 @@ backups/
 .expo-release-check-android/
 .expo-release-check-ios-final/
 admin/dist/
+*.aab
 supabase/.temp/
 supabase/.branches/
