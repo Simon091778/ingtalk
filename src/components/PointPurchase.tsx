@@ -37,6 +37,7 @@ export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => vo
         return
       }
       if (isExpoGo) {
+        setSetupMessage('결제는 개발 빌드 또는 스토어에서 설치한 앱에서 이용할 수 있어요.')
         setLoading(false)
         return
       }
