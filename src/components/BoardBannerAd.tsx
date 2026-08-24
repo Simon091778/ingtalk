@@ -21,7 +21,7 @@ export function BoardBannerAd({ language }: { language: 'ko' | 'en' }) {
     <Text style={styles.label}>{language === 'ko' ? '광고' : 'Ad'}</Text>
     <BannerAd
       unitId={unitId}
-      size={BannerAdSize.INLINE_ADAPTIVE_BANNER}
+      size={BannerAdSize.BANNER}
       requestOptions={{ requestNonPersonalizedAdsOnly: true }}
       onAdFailedToLoad={error => {
         captureAppError(error, 'ads', 'board_banner')
@@ -33,15 +33,15 @@ export function BoardBannerAd({ language }: { language: 'ko' | 'en' }) {
 
 const styles = StyleSheet.create({
   container: {
-    minHeight: 56,
-    marginBottom: 18,
+    minHeight: 54,
+    marginBottom: 10,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   label: {
     alignSelf: 'flex-start',
-    marginBottom: 4,
+    marginBottom: 2,
     color: '#94A3B8',
     fontSize: 9,
     fontWeight: '800',
