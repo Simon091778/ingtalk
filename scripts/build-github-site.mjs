@@ -110,6 +110,7 @@ function writePage(path, html) {
 rmSync(outputDir, { recursive: true, force: true });
 mkdirSync(outputDir, { recursive: true });
 cpSync(join(sourceDir, "styles.css"), join(outputDir, "styles.css"));
+cpSync(join(sourceDir, "app-ads.txt"), join(outputDir, "app-ads.txt"));
 
 for (const name of pages) {
   const source = readFileSync(join(sourceDir, `${name}.asp`), "utf8");
