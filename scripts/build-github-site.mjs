@@ -1,4 +1,5 @@
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import "./sync-legal-documents.mjs";
+import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -107,7 +108,7 @@ function writePage(path, html) {
   writeFileSync(path, html, "utf8");
 }
 
-rmSync(outputDir, { recursive: true, force: true });
+// Preserve independently built admin assets; overwrite generated pages only.
 mkdirSync(outputDir, { recursive: true });
 cpSync(join(sourceDir, "styles.css"), join(outputDir, "styles.css"));
 cpSync(join(sourceDir, "app-ads.txt"), join(outputDir, "app-ads.txt"));
