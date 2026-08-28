@@ -6,6 +6,7 @@ const actionLabels: Record<string, string> = {
   start_review: '신고 검토 시작', dismiss: '신고 기각', resolve: '신고 처리 완료',
   suspend: '기간 정지', ban: '영구 정지', restore: '이용 복구', adjust_points: '포인트 조정',
   delete_message_backup: '채팅 보관본 영구 삭제',
+  revoke_device_sessions: '기기 로그아웃',
 }
 const roleLabels = { reviewer: '검토자', moderator: '운영자', owner: '최고 관리자' }
 const dt = (value: string) => new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))

@@ -90,7 +90,7 @@ describe('관리자 페이지', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: '안전 대시보드' })).toBeInTheDocument()
-    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(await screen.findByText('12')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.getByText('admin@ingtalk.test')).toBeInTheDocument()
     expect(mocks.rpc).toHaveBeenCalledWith('admin_me')

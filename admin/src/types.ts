@@ -78,7 +78,15 @@ export type UserProfileDetail = {
 
 export type UserDetail = {
   profile: UserProfileDetail
-  talks: Array<{ id: string; purpose: string; topic: string; is_active: boolean; created_at: string; expires_at: string }>
+  talks: Array<{
+    id: string
+    purpose: string
+    topic: string
+    is_active: boolean
+    created_at: string
+    expires_at: string
+    location_captured_at: string | null
+  }>
   posts: Array<{ id: string; title: string; body: string; image_url: string | null; view_count: number; created_at: string }>
   comments: Array<{ id: string; body: string; created_at: string; post_id: string; post_title: string }>
   reports: Array<{ id: string; reason: string; priority: string; status: string; details: string; created_at: string; reviewed_at: string | null; review_note: string | null }>
@@ -171,4 +179,16 @@ export type SupportMessage = {
   sender_label: string
   body: string
   created_at: string
+}
+export interface AccountOperations {
+  account_id: string
+  checked_at: string
+  profile_active: boolean
+  identities: Array<{ provider: string; linked_at: string; active: boolean }>
+  devices: Array<{
+    id: string; platform: string; is_primary: boolean; created_at: string; active_sessions: number
+    rewards: Array<{ type: string; account_claimed_at: string | null; device_claimed_at: string | null; available: boolean; next_available_at: string | null }>
+  }>
+  ad_claims: Array<{ reference: string; device_id: string | null; created_at: string; expires_at: string; processed_at: string | null; status: 'pending' | 'awarded' | 'denied' | 'expired' }>
+  verifications: Array<{ id: number; provider: string; awarded: boolean; verified_at: string }>
 }
