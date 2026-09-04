@@ -1,4 +1,4 @@
-export type TalkPurpose = '수다' | '취미' | '친구' | '연애' | '고민상담' | '만남' | '식사' | '산책'
+export type TalkPurpose = '수다' | '대화' | '취미' | '친구' | '연애' | '고민상담' | '만남' | '식사' | '산책'
 
 export type TalkCard = {
   id: string
@@ -12,6 +12,7 @@ export type TalkCard = {
   gender?: 'male' | 'female' | 'other' | 'private' | null
   avatarUrl?: string | null
   minutesAgo: number
+  elapsedSeconds?: number
   distanceMeters?: number | null
   isMine?: boolean
 }

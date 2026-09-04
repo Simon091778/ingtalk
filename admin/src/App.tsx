@@ -6,11 +6,13 @@ import { UsersPage } from './UsersPage'
 import { AuditPage } from './AuditPage'
 import { ChatOperationsPage } from './ChatOperationsPage'
 import { SupportPage } from './SupportPage'
+import { ContentOperationsPage } from './ContentOperationsPage'
+import { AccountHistoryPage } from './AccountHistoryPage'
 
 const reasonLabels: Record<string, string> = {
   sexual: '음란물·성적 콘텐츠', illegal_meeting: '불법 만남·성매매 유도', harassment: '욕설·괴롭힘',
   fraud: '사기·금전 요구', spam: '광고·도배', privacy: '개인정보 노출', suspected_minor: '미성년자 의심',
-  illegal_image: '불법 촬영물 의심', other: '기타',
+  illegal_image: '불법 촬영물 의심', abuse: '욕설·괴롭힘', impersonation: '사칭', dangerous: '위험 행위', other: '기타',
 }
 const roleLabels = { reviewer: '검토자', moderator: '운영자', owner: '최고 관리자' }
 const statusLabels = { open: '신규', reviewing: '검토 중', resolved: '처리 완료', dismissed: '기각' }
@@ -69,9 +71,11 @@ function App() {
   const [suspensionDays, setSuspensionDays] = useState('7')
   const [pointAmount, setPointAmount] = useState('')
   const [pointReason, setPointReason] = useState('')
-  const [page, setPage] = useState<'dashboard' | 'users' | 'audit' | 'chats' | 'support'>('dashboard')
+  const [page, setPage] = useState<'dashboard' | 'users' | 'content' | 'accounts' | 'audit' | 'chats' | 'support'>('dashboard')
 
   const selected = useMemo(() => reports.find(item => item.id === selectedId) ?? null, [reports, selectedId])
+  const selectedEvidence = selected && Array.isArray(selected.content_snapshot) ? selected.content_snapshot : []
+  const selectedSnapshot = selected && !Array.isArray(selected.content_snapshot) ? selected.content_snapshot : null
   const canModerate = admin?.role === 'moderator' || admin?.role === 'owner'
   const isOwner = admin?.role === 'owner'
 
@@ -152,12 +156,12 @@ function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <div><div className="side-brand"><div className="brand-mark small">잉</div><div><strong>잉톡</strong><span>운영센터</span></div></div>
-        <nav><button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span>⌂</span>안전 대시보드</button><button className={page === 'users' ? 'active' : ''} onClick={() => setPage('users')}><span>◎</span>이용자 관리</button><button className={page === 'audit' ? 'active' : ''} onClick={() => setPage('audit')}><span>◇</span>감사 기록</button><button className={page === 'support' ? 'active' : ''} onClick={() => setPage('support')}><span>?</span>고객 문의</button>{canModerate && <button className={page === 'chats' ? 'active' : ''} onClick={() => setPage('chats')}><span>↔</span>대화 기록</button>}</nav>
+        <nav><button className={page === 'dashboard' ? 'active' : ''} onClick={() => setPage('dashboard')}><span>⌂</span>안전 대시보드</button><button className={page === 'users' ? 'active' : ''} onClick={() => setPage('users')}><span>◎</span>이용자 관리</button><button className={page === 'content' ? 'active' : ''} onClick={() => setPage('content')}><span>▦</span>콘텐츠 관리</button><button className={page === 'accounts' ? 'active' : ''} onClick={() => setPage('accounts')}><span>≋</span>계정·결제 이력</button><button className={page === 'audit' ? 'active' : ''} onClick={() => setPage('audit')}><span>◇</span>감사 기록</button><button className={page === 'support' ? 'active' : ''} onClick={() => setPage('support')}><span>?</span>고객 문의</button>{canModerate && <button className={page === 'chats' ? 'active' : ''} onClick={() => setPage('chats')}><span>↔</span>대화 기록</button>}</nav>
       </div>
       <div className="operator"><span>{admin.email}</span><strong>{roleLabels[admin.role]}</strong><button onClick={() => void supabase?.auth.signOut()}>로그아웃</button></div>
     </aside>
     <main className="workspace">
-      {page === 'users' ? <UsersPage role={admin.role} /> : page === 'audit' ? <AuditPage /> : page === 'support' ? <SupportPage /> : page === 'chats' ? <ChatOperationsPage /> : <>
+      {page === 'users' ? <UsersPage role={admin.role} /> : page === 'content' ? <ContentOperationsPage role={admin.role} /> : page === 'accounts' ? <AccountHistoryPage /> : page === 'audit' ? <AuditPage /> : page === 'support' ? <SupportPage /> : page === 'chats' ? <ChatOperationsPage /> : <>
       <header className="topbar"><div><p className="eyebrow">SAFETY OVERVIEW</p><h1>안전 대시보드</h1><p>신고를 우선순위에 따라 검토하고 필요한 조치를 기록합니다</p></div><button className="refresh" onClick={() => void loadData()} disabled={loading}>↻ 새로고침</button></header>
       {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError('')}>닫기</button></div>}
       <section className="stats-grid">
@@ -175,7 +179,8 @@ function App() {
             <div className="detail-header"><div><span className={`priority ${selected.priority}`}>{selected.priority === 'urgent' ? '긴급' : selected.priority === 'high' ? '높음' : '일반'}</span><h2>{selected.reported_nickname}</h2><p>{reasonLabels[selected.reason] ?? selected.reason}</p></div><button className="close-detail" onClick={() => setSelectedId(null)}>×</button></div>
             <div className="profile-summary"><div><span>계정 상태</span><strong>{selected.reported_status}{selected.suspended_until ? ` · ${formatDate(selected.suspended_until)}까지` : ''}</strong></div><div><span>신고자</span><strong>{selected.reporter_nickname}</strong></div><div><span>접수 시각</span><strong>{formatDate(selected.created_at)}</strong></div></div>
             {selected.details && <section className="detail-block"><h3>신고자 설명</h3><p>{selected.details}</p></section>}
-            <section className="detail-block"><h3>최근 대화 증거 <span>{selected.content_snapshot?.length ?? 0}건</span></h3><div className="evidence">{selected.content_snapshot?.length ? selected.content_snapshot.map(message => <article key={message.id} className={message.sender_id === selected.reported_user_id ? 'reported' : ''}><div><strong>{message.sender_id === selected.reported_user_id ? selected.reported_nickname : '신고자'}</strong><time>{formatDate(message.created_at)}</time></div><p>{message.body}</p></article>) : <p className="muted">보존된 대화가 없습니다</p>}</div></section>
+            {selectedSnapshot && <section className="detail-block"><h3>신고 대상 스냅샷</h3><div className="snapshot-fields">{Object.entries(selectedSnapshot).map(([key, value]) => <div key={key}><span>{key}</span><strong>{value == null ? '-' : typeof value === 'object' ? JSON.stringify(value) : String(value)}</strong></div>)}</div></section>}
+            <section className="detail-block"><h3>최근 대화 증거 <span>{selectedEvidence.length}건</span></h3><div className="evidence">{selectedEvidence.length ? selectedEvidence.map(message => <article key={message.id} className={message.sender_id === selected.reported_user_id ? 'reported' : ''}><div><strong>{message.sender_id === selected.reported_user_id ? selected.reported_nickname : '신고자'}</strong><time>{formatDate(message.created_at)}</time></div><p>{message.body}</p></article>) : <p className="muted">보존된 대화가 없습니다</p>}</div></section>
             <section className="decision-box"><label>운영 메모<textarea value={note} onChange={event => setNote(event.target.value)} maxLength={1000} placeholder="판단 근거와 조치 내용을 기록해 주세요" /></label><div className="decision-actions"><button onClick={() => void resolve('dismiss')} disabled={loading}>기각</button><button onClick={() => void resolve('resolve')} disabled={loading}>처리 완료</button></div>{canModerate && <div className="moderator-actions"><div><label>정지 기간<input type="number" min="1" max="365" value={suspensionDays} onChange={event => setSuspensionDays(event.target.value)} /></label><button className="danger" onClick={() => void resolve('suspend')} disabled={loading}>기간 정지</button></div><button onClick={() => void resolve('restore')} disabled={loading}>이용 복구</button>{isOwner && <button className="danger solid" onClick={() => void resolve('ban')} disabled={loading}>영구 정지</button>}</div>}</section>
             {canModerate && <section className="point-box"><h3>포인트 조정</h3><p>모든 변경은 거래 내역과 감사 로그에 남습니다</p><div><input type="number" value={pointAmount} onChange={event => setPointAmount(event.target.value)} placeholder="예: 500 또는 -100" /><input value={pointReason} onChange={event => setPointReason(event.target.value)} maxLength={300} placeholder="조정 사유" /><button onClick={() => void adjustPoints()} disabled={loading || !pointAmount || pointReason.trim().length < 2}>반영</button></div></section>}
           </>}</div>

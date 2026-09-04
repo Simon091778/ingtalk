@@ -1,4 +1,22 @@
-import { elapsedFromIso, formatDistanceMeters, formatElapsedMinutes } from '../displayFormat'
+import { elapsedFromIso, formatDiscoveryElapsedSeconds, formatDistanceMeters, formatElapsedMinutes } from '../displayFormat'
+
+describe('발견 시간 표시', () => {
+  test.each([
+    [0, '0초 전'],
+    [1, '1초 전'],
+    [59, '59초 전'],
+    [60, '1분 전'],
+    [61, '1분 전'],
+    [119, '1분 전'],
+    [120, '2분 전'],
+  ])('%i초를 %s으로 표시한다', (seconds, expected) => {
+    expect(formatDiscoveryElapsedSeconds(seconds)).toBe(expected)
+  })
+
+  it('미래 시각으로 계산된 음수 경과값은 0초로 제한한다', () => {
+    expect(formatDiscoveryElapsedSeconds(-1)).toBe('0초 전')
+  })
+})
 
 describe('시간 표시', () => {
   test.each([
@@ -25,10 +43,14 @@ describe('거리 표시', () => {
     [null, false, '? km'],
     [Number.NaN, false, '? km'],
     [0, false, '0km'],
-    [1000, false, '0km'],
+    [900, false, '0km'],
+    [999, false, '0km'],
+    [1000, false, '1km'],
     [1001, false, '1km'],
-    [2000, false, '1km'],
-    [50000, false, '49km'],
+    [1900, false, '1km'],
+    [2000, false, '2km'],
+    [15500, false, '15km'],
+    [50000, false, '50km'],
     [50000, true, '내 글'],
   ])('거리 %s, 내 글 %s를 %s으로 표시한다', (meters, isMine, expected) => {
     expect(formatDistanceMeters(meters, isMine)).toBe(expected)

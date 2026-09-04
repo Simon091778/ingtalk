@@ -11,7 +11,7 @@ const actionLabels: Record<string, string> = {
   revoke_device_sessions: '기기 로그아웃',
 }
 const pointReasonLabels: Record<string, string> = {
-  chat_request: '대화 신청', reward_attendance: '출석 보상', reward_talk_write: '톡 작성 보상',
+  chat_request: '대화 신청', open_chat_room_create: '수다방 만들기', reward_attendance: '출석 보상', reward_talk_write: '톡 작성 보상',
   reward_board_post: '게시글 작성 보상', reward_board_comment: '댓글 작성 보상', admin_adjustment: '운영자 조정',
   reward_rewarded_ad: '광고 시청 보상', point_purchase: '포인트 구매', point_purchase_refund: '구매 환불 회수',
   welcome_account: '가입 보상',
@@ -116,7 +116,7 @@ export function UsersPage({ role }: { role: AdminRole }) {
     <header className="topbar"><div><p className="eyebrow">USER OPERATIONS</p><h1>이용자 관리</h1><p>계정과 활동 기록을 확인하고 필요한 운영 조치를 수행합니다</p></div><button className="refresh" onClick={() => void search()} disabled={loading}>↻ 새로고침</button></header>
     {error && <div className="error-banner"><span>{error}</span><button onClick={() => setError('')}>닫기</button></div>}
     <section className="user-toolbar">
-      <form onSubmit={submitSearch}><input value={query} onChange={event => setQuery(event.target.value)} placeholder="닉네임 또는 사용자 ID 검색" /><button>검색</button></form>
+      <form onSubmit={submitSearch}><input value={query} onChange={event => setQuery(event.target.value)} placeholder="닉네임, ID, 전화번호, Google 이메일 검색" /><button>검색</button></form>
       <div className="filters">{['all', 'active', 'suspended', 'paused', 'deleted'].map(value => <button key={value} className={status === value ? 'selected' : ''} onClick={() => setStatus(value)}>{value === 'all' ? '전체' : value === 'active' ? '정상' : value === 'suspended' ? '정지' : value === 'paused' ? '일시중지' : '삭제'}</button>)}</div>
     </section>
     <section className="user-layout">

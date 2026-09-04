@@ -7,6 +7,7 @@ import { SwipeDismissView } from './SwipeDismissView'
 
 const options: Array<{ key: keyof NotificationPreferences; title: string; description: string }> = [
   { key: 'message_enabled', title: '메시지 알림', description: '새 메시지가 도착하면 알려드려요.' },
+  { key: 'open_chat_enabled', title: '수다방 알림', description: '참여 중인 수다방의 새 메시지를 알려드려요.' },
   { key: 'request_enabled', title: '대화 신청 알림', description: '새로운 대화 신청을 알려드려요.' },
   { key: 'preview_enabled', title: '메시지 내용 미리보기', description: '알림에 메시지 내용을 표시합니다.' },
   { key: 'sound_enabled', title: '소리', description: '알림이 올 때 소리를 재생합니다.' },
@@ -39,8 +40,8 @@ export function NotificationSettings({ visible, onClose, onDismiss }: { visible:
 
   const topInset = Math.max(insets.top, Platform.OS === 'ios' ? 47 : 0)
 
-  return <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} onDismiss={onDismiss} onRequestClose={onClose}>
-    <SwipeDismissView onDismissStart={() => setClosingBySwipe(true)} onDismiss={onClose}>
+  return <Modal visible={visible} animationType="none" onDismiss={onDismiss} onRequestClose={onClose}>
+    <SwipeDismissView visible={visible} onDismissStart={() => setClosingBySwipe(true)} onDismiss={onClose}>
     <SafeAreaView style={[styles.safe, { paddingTop: topInset }]} edges={['bottom']}>
       <View style={styles.header}><Pressable onPress={onClose} hitSlop={10} style={styles.headerButton}><Text style={styles.close}>‹ 권한 설정</Text></Pressable><Text pointerEvents="none" style={styles.title}>알림</Text><View style={styles.headerButton} /></View>
       {loading ? <View style={styles.center}><ActivityIndicator color="#F26B4B" /></View> : <ScrollView contentContainerStyle={styles.content}>

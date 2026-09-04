@@ -9,7 +9,7 @@ export type ErrorContext = Record<string, LogValue>
 
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim()
 const environment = process.env.EXPO_PUBLIC_APP_ENV?.trim() || (__DEV__ ? 'development' : 'production')
-const blockedKey = /(authorization|cookie|password|secret|token|key|message|body|content|latitude|longitude|uri|url)/i
+const blockedKey = /(authorization|cookie|password|secret|token|key|phone|otp|recovery|reinstall|fingerprint|android.?id|device.?id|message|body|content|latitude|longitude|uri|url)/i
 const expectedError = /(insufficient_points|request_already_exists|cannot_request_self|card_not_available|users_blocked|report_already_exists|permission denied|cancelled|canceled)/i
 
 let initialized = false

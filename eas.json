@@ -4,11 +4,19 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "phone-auth-preview": {
+      "distribution": "internal",
+      "environment": "production",
+      "channel": "phone-auth-preview",
+      "autoIncrement": true,
+      "android": { "buildType": "apk" }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "environment": "development",
-      "channel": "development"
+      "channel": "development",
+      "android": { "buildType": "apk" }
     },
     "preview": {
       "distribution": "internal",
@@ -22,6 +30,13 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "closed-test": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "completed",
+        "changesNotSentForReview": false
+      }
+    }
   }
 }

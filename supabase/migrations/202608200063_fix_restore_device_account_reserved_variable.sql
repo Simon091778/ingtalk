@@ -15,10 +15,13 @@ begin
     'target_user_uuid'
   );
 
-  if fixed_definition = function_definition then
+  if fixed_definition = function_definition
+     and function_definition not like '%target_user_uuid uuid%' then
     raise exception 'restore_device_account reserved variable was not found';
   end if;
 
-  execute fixed_definition;
+  if fixed_definition <> function_definition then
+    execute fixed_definition;
+  end if;
 end;
 $$;

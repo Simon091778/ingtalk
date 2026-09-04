@@ -6,6 +6,7 @@ import { PRIVACY_POLICY_TEXT, TERMS_OF_SERVICE_TEXT } from '../content/legal'
 import { PRIVACY_POLICY_TEXT_EN, TERMS_OF_SERVICE_TEXT_EN } from '../content/legal.en'
 import { requestConsentPermissions } from '../lib/consentPermissions'
 import { SwipeDismissView } from './SwipeDismissView'
+import { AppStartupScreen } from './AppStartupScreen'
 
 export type PermissionPreferences = {
   location: boolean
@@ -79,7 +80,7 @@ export function ConsentGate({ onComplete, onBack, language = 'ko' }: { onComplet
     return () => subscription.remove()
   }, [detail, onBack])
 
-  if (loading) return <SafeAreaView style={styles.loading}><Text style={styles.brand}>잉톡</Text></SafeAreaView>
+  if (loading) return <AppStartupScreen language={language} />
 
   const requiredComplete = agreements.adult && agreements.terms && agreements.privacy
   const allSelected = requiredComplete && Object.values(permissions).every(Boolean)

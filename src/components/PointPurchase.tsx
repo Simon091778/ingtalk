@@ -1,6 +1,7 @@
+import { getAccountId } from '../lib/phoneAuth'
 import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Text } from '../i18n/localizedUi'
 import Constants, { ExecutionEnvironment } from 'expo-constants'
 import { captureAppError } from '../lib/observability'
@@ -20,8 +21,9 @@ const publicApiKey = Platform.select({
   android: process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY,
 })?.trim()
 
-export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => void; onBalanceChanged: (balance: number) => void }) {
+export function PointPurchase({ onClose, onBalanceChanged, embeddedIos = false }: { onClose: () => void; onBalanceChanged: (balance: number) => void; embeddedIos?: boolean }) {
   const i18n = useI18n()
+  const insets = useSafeAreaInsets()
   const [products, setProducts] = useState<StoreProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [buyingId, setBuyingId] = useState<string | null>(null)
@@ -52,11 +54,13 @@ export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => vo
         return
       }
       try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error('authentication_required')
+        const accountId = await getAccountId(supabase)
+        if (!accountId) throw new Error('authentication_required')
+        if (!active) return
         const { default: Purchases, PRODUCT_CATEGORY } = await import('react-native-purchases')
-        if (!(await Purchases.isConfigured())) Purchases.configure({ apiKey: publicApiKey, appUserID: user.id })
-        else await Purchases.logIn(user.id)
+        if (!active) return
+        if (!(await Purchases.isConfigured())) Purchases.configure({ apiKey: publicApiKey, appUserID: accountId })
+        else await Purchases.logIn(accountId)
         const loaded = await Purchases.getProducts(pointProducts.map(item => item.id), PRODUCT_CATEGORY.NON_SUBSCRIPTION)
         if (!active) return
         setProducts(loaded)
@@ -86,7 +90,11 @@ export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => vo
     if (!product || buyingId) return
     setBuyingId(item.id)
     try {
+      if (!supabase) throw new Error('authentication_required')
+      const accountId = await getAccountId(supabase)
+      if (!accountId) throw new Error('authentication_required')
       const { default: Purchases } = await import('react-native-purchases')
+      if (await Purchases.getAppUserID() !== accountId) await Purchases.logIn(accountId)
       await Purchases.purchaseStoreProduct(product as never)
       Alert.alert('결제가 완료됐어요', '스토어 확인 후 포인트가 자동으로 충전됩니다. 잠시만 기다려 주세요.')
       void refreshBalance()
@@ -101,7 +109,7 @@ export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => vo
     }
   }
 
-  return <SafeAreaView edges={['top', 'bottom']} style={styles.safe}>
+  return <SafeAreaView edges={embeddedIos ? [] : ['top', 'bottom']} style={[styles.safe, embeddedIos && { paddingBottom: insets.bottom }]}>
     <View style={styles.header}>
       <Pressable style={styles.headerButton} hitSlop={10} onPress={onClose}><Text style={styles.close}>닫기</Text></Pressable>
       <Text style={styles.title}>포인트 충전</Text>
@@ -109,6 +117,9 @@ export function PointPurchase({ onClose, onBalanceChanged }: { onClose: () => vo
     </View>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.intro}><Text style={styles.introTitle}>필요한 만큼 충전하세요</Text><Text style={styles.introText}>구매한 포인트는 대화 신청과 프로필 정보 수정에 사용할 수 있어요</Text></View>
+      <View style={styles.notice}><Text style={styles.noticeText}>{i18n.language === 'ko'
+        ? 'Google 또는 카카오 계정으로 인증해 두면, 앱을 다시 설치해도 같은 계정으로 포인트를 복구할 수 있어요.'
+        : 'Verify with your Google or Kakao account to restore your points with the same account, even after reinstalling the app.'}</Text></View>
       {loading && <View style={styles.loading}><ActivityIndicator color="#D94F70" /><Text style={styles.loadingText}>결제 상품을 확인하고 있어요</Text></View>}
       {setupMessage && <View style={styles.notice}><Text style={styles.noticeText}>{setupMessage}</Text></View>}
       <View style={styles.products}>

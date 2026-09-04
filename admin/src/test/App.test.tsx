@@ -34,6 +34,8 @@ vi.mock('../UsersPage', () => ({ UsersPage: () => <h1>이용자 관리 화면</h
 vi.mock('../AuditPage', () => ({ AuditPage: () => <h1>감사 기록 화면</h1> }))
 vi.mock('../SupportPage', () => ({ SupportPage: () => <h1>고객 문의 화면</h1> }))
 vi.mock('../ChatOperationsPage', () => ({ ChatOperationsPage: () => <h1>대화 기록 화면</h1> }))
+vi.mock('../ContentOperationsPage', () => ({ ContentOperationsPage: () => <h1>콘텐츠 관리 화면</h1> }))
+vi.mock('../AccountHistoryPage', () => ({ AccountHistoryPage: () => <h1>계정·결제 이력 화면</h1> }))
 
 import App from '../App'
 
@@ -105,6 +107,10 @@ describe('관리자 페이지', () => {
 
     await user.click(screen.getByRole('button', { name: /이용자 관리/ }))
     expect(screen.getByRole('heading', { name: '이용자 관리 화면' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /콘텐츠 관리/ }))
+    expect(screen.getByRole('heading', { name: '콘텐츠 관리 화면' })).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /계정·결제 이력/ }))
+    expect(screen.getByRole('heading', { name: '계정·결제 이력 화면' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /감사 기록/ }))
     expect(screen.getByRole('heading', { name: '감사 기록 화면' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /고객 문의/ }))

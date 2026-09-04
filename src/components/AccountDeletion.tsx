@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ActivityIndicator, Alert, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, View } from 'react-native'
+import { ActivityIndicator, Alert, Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Text, TextInput } from '../i18n/localizedUi'
 import { useI18n } from '../i18n'
 import { supabase } from '../lib/supabase'
@@ -29,7 +30,6 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   const { language } = useI18n()
   const confirmationPhrase = language === 'en' ? 'DELETE' : CONFIRMATION
   const [visible, setVisible] = useState(false)
-  const [closingBySwipe, setClosingBySwipe] = useState(false)
   const [confirmation, setConfirmation] = useState('')
   const [deleting, setDeleting] = useState(false)
 
@@ -40,6 +40,8 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
       localStorage.removeItem('ingtalk.consent.v2')
       localStorage.removeItem('ingtalk.consent.v3')
       localStorage.removeItem('ingtalk.consent.v4')
+      localStorage.removeItem('ingtalk.last-sent-request-message.v1')
+      localStorage.removeItem('ingtalk.last-published-talk-card.v1')
     } catch { /* Native storage may not expose localStorage in every runtime. */ }
   }
   const deleteAccount = async () => {
@@ -71,28 +73,37 @@ export function AccountDeletion({ onDeleted }: { onDeleted: () => void }) {
   return <>
     <View style={styles.card}>
       <View style={styles.cardText}><Text style={styles.title}>회원 탈퇴</Text><Text style={styles.description}>계정과 작성한 콘텐츠를 영구 삭제합니다</Text></View>
-      <Pressable accessibilityRole="button" onPress={() => { setClosingBySwipe(false); setVisible(true) }} style={styles.openButton}><Text style={styles.openButtonText}>탈퇴</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => setVisible(true)} style={styles.openButton}><Text style={styles.openButtonText}>탈퇴</Text></Pressable>
     </View>
-    <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} presentationStyle="fullScreen" onRequestClose={close}>
-      <SwipeDismissView onDismissStart={() => setClosingBySwipe(true)} onDismiss={close} enabled={!deleting}>
+    <Modal visible={visible} animationType="none" presentationStyle="fullScreen" onRequestClose={close}>
+      <SwipeDismissView visible={visible} onDismiss={close} enabled={!deleting}>
+      <KeyboardAvoidingView testID="account-deletion-keyboard-viewport" style={styles.flex} enabled behavior="padding">
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}><Pressable disabled={deleting} hitSlop={12} onPress={close} style={styles.headerButton}><Text style={styles.close}>취소</Text></Pressable><Text style={styles.headerTitle}>회원 탈퇴</Text><View style={styles.headerButton} /></View>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.warning}><Text style={styles.warningTitle}>탈퇴하면 복구할 수 없습니다</Text><Text style={styles.warningText}>현재 익명 계정으로 다시 접속할 수 없으며, 새로운 계정에는 기존 정보와 포인트가 이전되지 않습니다.</Text></View>
+        <ScrollView
+          style={styles.flex}
+          contentContainerStyle={styles.content}
+          automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        >
+          <View style={styles.warning}><Text style={styles.warningTitle}>탈퇴하면 복구할 수 없습니다</Text><Text style={styles.warningText}>{language === 'en' ? 'This deletes the entire account shared across all phones and linked sign-in methods. Other phones lose access too. Deleted points and chats cannot be restored. Registration on all registered devices is restricted for 7 days.' : '모든 휴대폰과 연결된 로그인 수단이 함께 사용하는 계정 전체를 삭제합니다. 다른 휴대폰도 로그아웃되며, 삭제된 포인트와 대화는 복구되지 않습니다. 등록된 기기에서는 7일 동안 다시 가입할 수 없습니다.'}</Text></View>
           <Text style={styles.sectionTitle}>삭제되는 정보</Text>
           <View style={styles.list}><Text>• 프로필, 사진 및 위치</Text><Text>• 톡쓰기, 게시글, 댓글 및 첨부 사진</Text><Text>• 대화 신청, 채팅방 및 메시지</Text><Text>• 포인트, 출석과 활동 보상 내역</Text><Text>• 차단 정보, 알림과 기기 푸시 토큰</Text></View>
           <Text style={styles.retention}>신고 처리와 서비스 악용 방지를 위해 보존이 필요한 최소 운영 기록은 이용자 식별정보와 작성 내용을 제거한 후 제한적으로 남을 수 있습니다.</Text>
           <Text style={styles.confirmLabel}>{language === 'en' ? `Type “${confirmationPhrase}” below to confirm` : `확인을 위해 아래에 “${confirmationPhrase}”를 입력해 주세요`}</Text>
-          <TextInput value={confirmation} onChangeText={setConfirmation} editable={!deleting} autoCapitalize="none" autoCorrect={false} placeholder={confirmationPhrase} style={styles.input} />
+          <TextInput value={confirmation} onChangeText={setConfirmation} editable={!deleting} autoCapitalize="none" autoCorrect={false} placeholder={confirmationPhrase} style={styles.input} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
           <Pressable disabled={confirmation.trim() !== confirmationPhrase || deleting} onPress={() => void deleteAccount()} style={[styles.deleteButton, (confirmation.trim() !== confirmationPhrase || deleting) && styles.disabled]}>{deleting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.deleteButtonText}>계정과 데이터 영구 삭제</Text>}</Pressable>
         </ScrollView>
       </SafeAreaView>
+      </KeyboardAvoidingView>
       </SwipeDismissView>
     </Modal>
   </>
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   card: { minHeight: 68, marginTop: 14, paddingHorizontal: 16, borderRadius: 16, borderWidth: 1, borderColor: '#F1D3D8', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center' },
   cardText: { flex: 1, marginRight: 12 }, title: { color: '#7F1D1D', fontSize: 14, fontWeight: '900' }, description: { color: '#9F6B6B', fontSize: 10, marginTop: 4 },
   openButton: { minWidth: 58, minHeight: 38, borderRadius: 10, borderWidth: 1, borderColor: '#F3B8C1', alignItems: 'center', justifyContent: 'center' }, openButtonText: { color: '#BE2948', fontSize: 11, fontWeight: '900' },

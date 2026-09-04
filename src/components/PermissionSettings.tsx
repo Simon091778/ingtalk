@@ -6,6 +6,7 @@ import Constants, { ExecutionEnvironment } from 'expo-constants'
 import * as Location from 'expo-location'
 import { SwipeDismissView } from './SwipeDismissView'
 import { NotificationSettings } from './NotificationSettings'
+import { configureNotificationChannels } from '../lib/notificationPreferences'
 
 type PermissionKey = 'location' | 'notifications'
 type PermissionState = 'granted' | 'denied' | 'undetermined' | 'unavailable'
@@ -72,9 +73,7 @@ export function PermissionSettings() {
         } else {
           const Notifications = await import('expo-notifications')
           if (Platform.OS === 'android') {
-            await Notifications.setNotificationChannelAsync('messages', {
-              name: '대화 및 메시지', importance: Notifications.AndroidImportance.HIGH,
-            })
+            await configureNotificationChannels()
           }
           await Notifications.requestPermissionsAsync()
         }
@@ -117,8 +116,8 @@ export function PermissionSettings() {
       <Text style={styles.chevron}>›</Text>
     </Pressable>
 
-    <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} statusBarTranslucent={false} onDismiss={finishPermissionModalDismiss} onRequestClose={() => setVisible(false)}>
-      <SwipeDismissView onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}>
+    <Modal visible={visible} animationType="none" statusBarTranslucent={false} onDismiss={finishPermissionModalDismiss} onRequestClose={() => setVisible(false)}>
+      <SwipeDismissView visible={visible} onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}>
       <SafeAreaView style={styles.modalSafe} edges={['bottom']}>
         <View style={[styles.modalTopArea, { paddingTop: modalTopInset }] }>
           <View style={styles.modalHeader}>

@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
 import type { AccountOperations, AdminRole } from './types'
+import { formatAdminDateTime as dt, formatAdminPhone } from './adminFormat'
 
 const providers: Record<string, string> = { google: 'Google', kakao: '카카오', phone: '휴대폰' }
 const platforms: Record<string, string> = { android: 'Android', ios: 'iOS', web: '웹' }
 const rewards: Record<string, string> = { attendance: '출석', talk_write: '톡 작성', board_post: '게시글 작성', board_comment: '댓글 작성', rewarded_ad: '광고 시청' }
 const statuses = { pending: '서버 확인 대기', awarded: '50P 지급 완료', denied: '미지급 처리', expired: '확인 기한 만료' }
-const dt = (value: string | null) => value ? new Intl.DateTimeFormat('ko-KR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
+const verifiedAt = (value: string | null) => `인증일시: ${value ? dt(value) : '확인할 수 없음'}`
+const phoneDetachReasons: Record<string, string> = {
+  new_device_phone_reassignment: '다른 기기에서 동일 번호 인증',
+  return_to_known_device: '기존 기기에서 동일 번호 재인증',
+  same_device_phone_rotation: '같은 기기에서 휴대전화번호 변경',
+  legacy_multiple_active_owners: '과거 복수 소유 상태 정리',
+}
 const errorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : String((error as { message?: string })?.message ?? '정보를 불러오지 못했습니다')
   if (/PGRST202|Could not find the function/.test(message)) return '관리자 API가 아직 적용되지 않았습니다. 데이터베이스 마이그레이션 110을 적용해 주세요.'
@@ -68,6 +75,9 @@ export function UserAccountOperations({ accountId, role }: { accountId: string; 
   }
 
   const device = data?.devices.find(d => d.id === deviceId)
+  const phone = data?.phone ?? { status: 'unavailable' as const, phone: null, verified_at: null, detached_at: null, detach_reason: null }
+  const google = data?.google ?? { status: 'unavailable' as const, email: null, verified_at: null }
+  const kakao = data?.kakao ?? { status: 'unavailable' as const, verified_at: null }
   const deviceName = (id: string | null) => {
     const index = data?.devices.findIndex(d => d.id === id) ?? -1
     return index >= 0 ? `기기 ${index + 1}` : '이전 기기'
@@ -79,8 +89,30 @@ export function UserAccountOperations({ accountId, role }: { accountId: string; 
     {loading && <p role="status">계정과 보상 상태를 불러오는 중…</p>}
     {!loading && data && <>
       <h4>연결된 인증 수단</h4>
-      <p className="muted">연결된 Google 또는 카카오 계정으로 인증하면 재설치 후 같은 앱 계정과 포인트를 복구할 수 있습니다. 서로 다른 앱 계정은 자동으로 합쳐지지 않습니다.</p>
-      {data.identities.length ? <div className="account-provider-list">{data.identities.map(item => <article key={item.provider}><strong>{providers[item.provider] ?? item.provider}</strong><span>{item.active ? '인증 연결 유효' : '인증 상태 확인 필요'}</span><small>연결 {dt(item.linked_at)}</small></article>)}</div> : <p className="muted">연결된 인증 정보가 없습니다. 기존 계정 또는 삭제된 계정인지 확인해 주세요.</p>}
+      <p className="muted">연결된 Google 또는 카카오 계정으로 인증하면 재설치 후 같은 앱 계정과 포인트를 복구할 수 있습니다. 일반 로그인은 자동 병합하지 않으며, 현재 계정에서 다른 인증수단을 직접 재인증한 경우에만 검증된 계정 통합이 수행됩니다.</p>
+      <div className="account-provider-list">
+        <article><strong>휴대전화</strong>
+          <b className="account-phone-number">{(phone.status === 'active' || phone.status === 'detached') && phone.phone ? formatAdminPhone(phone.phone)
+            : phone.status === 'none' ? '연결된 휴대전화 없음' : '휴대전화 정보를 확인할 수 없습니다.'}</b>
+          {phone.status !== 'none' && <span className={phone.status === 'detached' ? 'detached' : undefined}>{phone.status === 'active' && phone.phone ? '인증 연결 유효' : phone.status === 'detached' && phone.phone ? '인증 해제됨' : '인증 상태 확인 필요'}</span>}
+          {phone.status !== 'none' && <small>{verifiedAt(phone.verified_at)}</small>}
+          {phone.status === 'detached' && <small>인증 해제일시: {dt(phone.detached_at ?? null)}</small>}
+          {phone.status === 'detached' && phone.detach_reason && <small>해제 사유: {phoneDetachReasons[phone.detach_reason] ?? '인증 연결 변경'}</small>}
+        </article>
+        <article><strong>Google</strong>
+          <b className="account-provider-value">{google.status === 'active' && google.email ? google.email
+            : google.status === 'none' ? '연결된 Google 계정 없음' : 'Google 계정 정보를 확인할 수 없습니다.'}</b>
+          {google.status !== 'none' && <span>{google.status === 'active' && google.email ? '인증 연결 유효' : '인증 상태 확인 필요'}</span>}
+          {google.status !== 'none' && <small>{verifiedAt(google.verified_at)}</small>}
+        </article>
+        <article><strong>카카오</strong>
+          <b className="account-provider-value">{kakao.status === 'none' ? '연결된 카카오 계정 없음'
+            : kakao.status === 'active' ? '카카오 로그인 연결' : '카카오 계정 정보를 확인할 수 없습니다.'}</b>
+          {kakao.status !== 'none' && <span>{kakao.status === 'active' ? '인증 연결 유효' : '인증 상태 확인 필요'}</span>}
+          {kakao.status !== 'none' && <small>{verifiedAt(kakao.verified_at)}</small>}
+        </article>
+        {data.identities.filter(item => !['phone','google','kakao'].includes(item.provider)).map((item, index) => <article key={`${item.provider}-${item.linked_at}-${index}`}><strong>{providers[item.provider] ?? item.provider}</strong><span>{item.active ? '인증 연결 유효' : '인증 상태 확인 필요'}</span><small>연결 {dt(item.linked_at)}</small></article>)}
+      </div>
       <h4>등록 기기</h4>
       <p className="muted">현재 허용된 앱 세션 수이며 실제 접속 중인 사용자 수는 아닙니다. 로그아웃은 다음 서버 요청부터 적용되며 기기 등록과 복구 연결은 유지됩니다.</p>
       {canModerate && data.devices.length > 0 && <label className="account-reason">로그아웃 사유<input value={reason} maxLength={300} disabled={busy} onChange={e => setReason(e.target.value)} placeholder="조치 사유 (2~300자, 감사 기록에 저장)" /></label>}

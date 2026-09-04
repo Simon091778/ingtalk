@@ -1,7 +1,7 @@
+import { getAccountId } from '../lib/phoneAuth'
 import * as SecureStore from 'expo-secure-store'
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { Alert } from 'react-native'
-import { getDeviceRewardFingerprint } from '../lib/deviceIdentity'
 import { supabase } from '../lib/supabase'
 import { localizeText, setLocalizedUiLanguage } from './localizedUi'
 
@@ -54,6 +54,9 @@ const en: Record<MessageKey, string> = {
 
 const STORAGE_KEY = 'ingtalk.regional-preferences.v1'
 const INSTALLATION_READY_KEY = 'ingtalk.installation-ready.v1'
+// Older saved preferences do not prove that the region-first entry was completed.
+// Keep this installation-local: an iOS Keychain value may survive a reinstall.
+const REGION_BEFORE_PHONE_KEY = 'ingtalk.region-before-phone.v1'
 
 type I18nContextValue = RegionalPreferences & {
   ready: boolean
@@ -95,41 +98,25 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       }
 
       const installationMarkerExists = localStorage.getItem(INSTALLATION_READY_KEY) === '1'
+      const regionEntryConfirmed = localStorage.getItem(REGION_BEFORE_PHONE_KEY) === '1'
       localStorage.setItem(INSTALLATION_READY_KEY, '1')
       if (installationMarkerExists) {
-        if (savedPreferences) { setPreferences(savedPreferences); setHasSelected(true) }
+        if (savedPreferences) { setPreferences(savedPreferences); setHasSelected(regionEntryConfirmed) }
         return
       }
 
       if (supabase) {
-        const { data: existingSession } = await supabase.auth.getSession()
-        // A session on an installation without the new marker is an app upgrade,
-        // not a reinstall. Do not interrupt an existing user merely once.
-        if (existingSession.session?.user.id) {
-          const { data: profile } = await supabase.from('profiles').select('language_code, country_code').eq('id', existingSession.session.user.id).maybeSingle()
+        const accountId = await getAccountId(supabase)
+        // Reuse existing choices, but still confirm the region-first entry once.
+        if (accountId) {
+          const { data: profile } = await supabase.from('profiles').select('language_code, country_code').eq('id', accountId).maybeSingle()
           const serverPreferences = { language: profile?.language_code, country: profile?.country_code }
           const restored = isPreferences(serverPreferences) ? serverPreferences : savedPreferences
-          if (restored) { setPreferences(restored); setHasSelected(true); await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(restored)) }
+          if (restored) { setPreferences(restored); await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(restored)) }
           return
         }
 
-        const { data: anonymous } = await supabase.auth.signInAnonymously()
-        const userId = anonymous.user?.id
-        if (userId) {
-          const deviceFingerprint = await getDeviceRewardFingerprint()
-          const { data: recovery } = await supabase.rpc('restore_device_account', { device_fingerprint: deviceFingerprint })
-          if ((recovery as { recovered?: boolean } | null)?.recovered) {
-            const { data: profile } = await supabase.from('profiles').select('language_code, country_code').eq('id', userId).maybeSingle()
-            const serverPreferences = { language: profile?.language_code, country: profile?.country_code }
-            const restored = isPreferences(serverPreferences) ? serverPreferences : savedPreferences
-            if (restored) {
-              setPreferences(restored)
-              setIsRecoveryConfirmation(true)
-              await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(restored))
-              return
-            }
-          }
-        }
+
       }
 
       // Brand-new installations still show the normal selector. A Keychain value
@@ -160,13 +147,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   }, [preferences.language, preferences.country])
 
   const updatePreferences = useCallback(async (next: RegionalPreferences) => {
+    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(next))
+    localStorage.setItem(REGION_BEFORE_PHONE_KEY, '1')
     setPreferences(next)
     setHasSelected(true)
     setIsRecoveryConfirmation(false)
-    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(next))
     if (supabase) {
-      const { data } = await supabase.auth.getSession()
-      if (data.session?.user.id) {
+      const accountId = await getAccountId(supabase).catch(() => null)
+      if (accountId) {
         const { error } = await supabase.rpc('update_my_regional_preferences', {
           next_language: next.language,
           next_country: next.country,

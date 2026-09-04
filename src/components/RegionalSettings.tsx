@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityIndicator, Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text as NativeText, View } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Text } from '../i18n/localizedUi'
 import { serviceCountries, type AppLanguage, type RegionalPreferences, type ServiceCountry, useI18n } from '../i18n'
+import { mainTabHeaderActionStyle } from '../lib/mainTabLayout'
 import { SwipeDismissView } from './SwipeDismissView'
 
 function Choice<T extends string>({ label, value, selected, onPress }: { label: string; value: T; selected: T; onPress: (value: T) => void }) {
@@ -56,14 +57,42 @@ export function RegionalSelector({ onboarding = false, onContinue }: { onboardin
   </SafeAreaView>
 }
 
-export function RegionalSettings() {
+export function RegionalSettingsHeaderTrigger({ onPress }: { onPress: () => void }) {
+  const i18n = useI18n()
+  return <Pressable accessibilityRole="button" accessibilityLabel={i18n.language === 'ko' ? '언어 및 국가 설정' : 'Language and country settings'} accessibilityHint={i18n.language === 'ko' ? '터치하면 언어를 변경할 수 있습니다' : 'Opens language selection'} onPress={onPress} style={({ pressed }) => [styles.headerTrigger, pressed && styles.headerTriggerPressed]}><View style={styles.languageMark}><NativeText style={styles.languageMarkCjk}>文</NativeText><View style={styles.languageMarkDivider} /><NativeText style={styles.languageMarkLatin}>A</NativeText></View></Pressable>
+}
+
+export function RegionalSettingsCardTrigger({ onPress }: { onPress: () => void }) {
   const i18n = useI18n()
   const selectedCountry = serviceCountries.find(item => item.code === i18n.country)
   const countryLabel = selectedCountry ? (i18n.language === 'ko' ? selectedCountry.ko : selectedCountry.en) : i18n.t('otherRegions')
-  const [visible, setVisible] = useState(false)
+  return <Pressable accessibilityRole="button" accessibilityLabel={i18n.t('regionalSettings')} onPress={onPress} style={styles.menuCard}><View style={styles.menuIcon}><Text style={styles.menuIconText}>文</Text></View><View style={styles.menuBody}><Text style={styles.menuTitle}>{i18n.t('regionalSettings')}</Text><Text style={styles.menuDescription}>{i18n.t('regionalSettingsDescription')} · {i18n.language === 'ko' ? '한국어' : 'English'} / {countryLabel}</Text></View><Text style={styles.chevron}>›</Text></Pressable>
+}
+
+type RegionalSettingsProps = {
+  trigger?: 'card' | 'header' | 'none'
+  visible?: boolean
+  onVisibleChange?: (visible: boolean) => void
+}
+
+export function RegionalSettings({ trigger = 'card', visible: controlledVisible, onVisibleChange }: RegionalSettingsProps) {
+  const i18n = useI18n()
+  const insets = useSafeAreaInsets()
+  const [internalVisible, setInternalVisible] = useState(false)
+  const visible = controlledVisible ?? internalVisible
   const [closingBySwipe, setClosingBySwipe] = useState(false)
   const [draft, setDraft] = useState<RegionalPreferences>({ language: i18n.language, country: i18n.country })
   const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    if (visible) {
+      setDraft({ language: i18n.language, country: i18n.country })
+      setClosingBySwipe(false)
+    }
+  }, [visible, i18n.country, i18n.language])
+  const setVisible = (nextVisible: boolean) => {
+    if (controlledVisible === undefined) setInternalVisible(nextVisible)
+    onVisibleChange?.(nextVisible)
+  }
   const open = () => { setDraft({ language: i18n.language, country: i18n.country }); setClosingBySwipe(false); setVisible(true) }
   const draftLabels = draft.language === 'ko'
     ? { close: '닫기', title: '언어 및 국가 설정', language: '언어', country: '서비스 국가', save: '저장' }
@@ -81,20 +110,26 @@ export function RegionalSettings() {
     ), 0)
   }
   const saveButton = () => <Pressable accessibilityRole="button" accessibilityLabel={draftLabels.save} accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => void save()} style={[styles.save, styles.modalFooterSave, saving && styles.disabled]}>{saving ? <ActivityIndicator color="#FFFFFF" /> : <NativeText style={styles.saveText}>{draftLabels.save}</NativeText>}</Pressable>
+  const triggerControl = trigger === 'header'
+    ? <RegionalSettingsHeaderTrigger onPress={open} />
+    : trigger === 'none' ? null
+    : <RegionalSettingsCardTrigger onPress={open} />
+  const settingsPanel = <SwipeDismissView visible={visible} onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}><SafeAreaView edges={Platform.OS === 'ios' ? [] : ['top', 'bottom']} style={[styles.safe, Platform.OS === 'ios' && { paddingBottom: insets.bottom }]}>
+    <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel={draftLabels.close} style={styles.headerButton} onPress={() => setVisible(false)}><NativeText style={styles.close}>{draftLabels.close}</NativeText></Pressable><NativeText numberOfLines={1} style={styles.headerTitle}>{draftLabels.title}</NativeText><Pressable accessibilityRole="button" accessibilityLabel={draft.language === 'ko' ? '언어 및 국가 설정 저장' : 'Save language and country settings'} accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => void save()} style={[styles.headerButton, styles.headerSaveButton, saving && styles.disabled]}>{saving ? <ActivityIndicator size="small" color="#F26B4B" /> : <NativeText style={styles.headerSaveText}>{draftLabels.save}</NativeText>}</Pressable></View>
+    <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent} nestedScrollEnabled showsVerticalScrollIndicator keyboardShouldPersistTaps="handled"><NativeText style={styles.label}>{draftLabels.language}</NativeText><Choice label="한국어" value="ko" selected={draft.language} onPress={language => setDraft(current => ({ ...current, language }))} /><Choice label="English" value="en" selected={draft.language} onPress={language => setDraft(current => ({ ...current, language }))} />
+    <NativeText style={styles.label}>{draftLabels.country}</NativeText>{serviceCountries.map(item => <Choice key={item.code} label={draft.language === 'ko' ? item.ko : item.en} value={item.code} selected={draft.country} onPress={country => setDraft(current => ({ ...current, country }))} />)}
+    </ScrollView>
+    <View style={styles.modalFooter}>{saveButton()}</View>
+  </SafeAreaView></SwipeDismissView>
   return <>
-    <Pressable style={styles.menuCard} onPress={open}><View style={styles.menuIcon}><Text style={styles.menuIconText}>文</Text></View><View style={styles.menuBody}><Text style={styles.menuTitle}>{i18n.t('regionalSettings')}</Text><Text style={styles.menuDescription}>{i18n.t('regionalSettingsDescription')} · {i18n.language === 'ko' ? '한국어' : 'English'} / {countryLabel}</Text></View><Text style={styles.chevron}>›</Text></Pressable>
-    <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} onRequestClose={() => setVisible(false)}><SwipeDismissView onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}><SafeAreaView style={styles.safe}>
-      <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel={draftLabels.close} style={styles.headerButton} onPress={() => setVisible(false)}><NativeText style={styles.close}>{draftLabels.close}</NativeText></Pressable><NativeText numberOfLines={1} style={styles.headerTitle}>{draftLabels.title}</NativeText><Pressable accessibilityRole="button" accessibilityLabel={draft.language === 'ko' ? '언어 및 국가 설정 저장' : 'Save language and country settings'} accessibilityState={{ busy: saving, disabled: saving }} disabled={saving} onPress={() => void save()} style={[styles.headerButton, styles.headerSaveButton, saving && styles.disabled]}>{saving ? <ActivityIndicator size="small" color="#F26B4B" /> : <NativeText style={styles.headerSaveText}>{draftLabels.save}</NativeText>}</Pressable></View>
-      <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent} nestedScrollEnabled showsVerticalScrollIndicator keyboardShouldPersistTaps="handled"><NativeText style={styles.label}>{draftLabels.language}</NativeText><Choice label="한국어" value="ko" selected={draft.language} onPress={language => setDraft(current => ({ ...current, language }))} /><Choice label="English" value="en" selected={draft.language} onPress={language => setDraft(current => ({ ...current, language }))} />
-      <NativeText style={styles.label}>{draftLabels.country}</NativeText>{serviceCountries.map(item => <Choice key={item.code} label={draft.language === 'ko' ? item.ko : item.en} value={item.code} selected={draft.country} onPress={country => setDraft(current => ({ ...current, country }))} />)}
-      </ScrollView>
-      <View style={styles.modalFooter}>{saveButton()}</View>
-    </SafeAreaView></SwipeDismissView></Modal>
+    {triggerControl}
+    {Platform.OS === 'ios' ? visible && <View accessibilityViewIsModal style={styles.inlineOverlay}>{settingsPanel}</View> : <Modal visible={visible} animationType={closingBySwipe ? 'none' : 'fade'} onRequestClose={() => setVisible(false)}>{settingsPanel}</Modal>}
   </>
 }
 
 const styles = StyleSheet.create({
   selectorSafe: { flex: 1, backgroundColor: '#FFF9F5' }, selectorScroll: { flex: 1 }, selector: { flexGrow: 1, paddingHorizontal: 22, paddingTop: 20, paddingBottom: 24 }, onboarding: { backgroundColor: '#FFF9F5' }, selectorFooter: { paddingHorizontal: 22, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: '#EEE7E2', backgroundColor: '#FFF9F5' }, onboardingSave: { marginTop: 0 }, heading: { color: '#1F2937', fontSize: 25, lineHeight: 34, fontWeight: '900' }, description: { color: '#78716C', fontSize: 13, lineHeight: 20, marginTop: 8, marginBottom: 14 }, label: { color: '#374151', fontSize: 14, fontWeight: '900', marginTop: 18, marginBottom: 8 }, choice: { minHeight: 52, paddingHorizontal: 16, marginBottom: 8, borderRadius: 14, borderWidth: 1, borderColor: '#E7DFDA', backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center' }, choiceActive: { borderColor: '#F26B4B', backgroundColor: '#FFF0E9' }, choiceText: { flex: 1, color: '#4B5563', fontSize: 14, fontWeight: '700' }, choiceTextActive: { color: '#C24120', fontWeight: '900' }, check: { color: '#F26B4B', fontSize: 18, fontWeight: '900' }, save: { minHeight: 52, borderRadius: 15, backgroundColor: '#F26B4B', alignItems: 'center', justifyContent: 'center', marginTop: 24 }, saveText: { color: '#FFFFFF', fontSize: 15, fontWeight: '900' }, disabled: { opacity: 0.55 },
   menuCard: { minHeight: 74, backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 16, marginTop: 10, borderWidth: 1, borderColor: '#F0EAE6', flexDirection: 'row', alignItems: 'center' }, menuIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#FFF0E9', alignItems: 'center', justifyContent: 'center', marginRight: 12 }, menuIconText: { color: '#F26B4B', fontSize: 17, fontWeight: '900' }, menuBody: { flex: 1 }, menuTitle: { color: '#374151', fontSize: 15, fontWeight: '900' }, menuDescription: { color: '#78716C', fontSize: 11, lineHeight: 17, marginTop: 4 }, chevron: { color: '#A8A29E', fontSize: 27, marginLeft: 8 },
-  safe: { flex: 1, backgroundColor: '#FFF9F5' }, modalScroll: { flex: 1 }, header: { minHeight: 60, paddingTop: 3, borderBottomWidth: 1, borderBottomColor: '#EEE7E2', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, headerButton: { width: 82, minHeight: 52, paddingHorizontal: 17, justifyContent: 'center' }, headerSaveButton: { alignItems: 'flex-end' }, headerSaveText: { color: '#F26B4B', fontSize: 14, fontWeight: '900' }, close: { color: '#F26B4B', fontSize: 14, fontWeight: '900' }, headerTitle: { flex: 1, color: '#1F2937', fontSize: 16, fontWeight: '900', textAlign: 'center' }, modalContent: { flexGrow: 1, padding: 20, paddingBottom: 44 }, modalFooter: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: '#EEE7E2', backgroundColor: '#FFF9F5' }, modalFooterSave: { marginTop: 0 },
+  headerTrigger: { ...mainTabHeaderActionStyle, width: 48, borderWidth: 1, borderColor: '#F0C9BD', backgroundColor: '#FFFFFF', shadowColor: '#9A3412', shadowOpacity: 0.09, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 2 }, headerTriggerPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] }, languageMark: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, languageMarkCjk: { color: '#C24120', fontSize: 15, lineHeight: 19, fontWeight: '900' }, languageMarkDivider: { width: 1, height: 15, marginHorizontal: 4, backgroundColor: '#F0B9A9', transform: [{ rotate: '18deg' }] }, languageMarkLatin: { color: '#F26B4B', fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  inlineOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 200, elevation: 200, backgroundColor: '#FFF9F5' }, safe: { flex: 1, backgroundColor: '#FFF9F5' }, modalScroll: { flex: 1 }, header: { minHeight: 60, paddingTop: 3, borderBottomWidth: 1, borderBottomColor: '#EEE7E2', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, headerButton: { width: 82, minHeight: 52, paddingHorizontal: 17, justifyContent: 'center' }, headerSaveButton: { alignItems: 'flex-end' }, headerSaveText: { color: '#F26B4B', fontSize: 14, fontWeight: '900' }, close: { color: '#F26B4B', fontSize: 14, fontWeight: '900' }, headerTitle: { flex: 1, color: '#1F2937', fontSize: 16, fontWeight: '900', textAlign: 'center' }, modalContent: { padding: 20, paddingBottom: 44 }, modalFooter: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 10, borderTopWidth: 1, borderTopColor: '#EEE7E2', backgroundColor: '#FFF9F5' }, modalFooterSave: { marginTop: 0 },
 })

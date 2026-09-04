@@ -1,12 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-
-type PushRecord = {
-  id: number
-  user_id: string
-  title: string
-  body: string
-  data: Record<string, string | number>
-}
+import { createChatPushMessage, getDisabledNotificationCategory, type PushRecord } from './payload.ts'
 
 type WebhookPayload = {
   type: 'INSERT'
@@ -32,34 +25,15 @@ Deno.serve(async request => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
   )
   const [{ data: tokens, error }, { data: preferences }] = await Promise.all([
-    supabase.from('push_tokens').select('token').eq('user_id', payload.record.user_id),
-    supabase.from('notification_preferences').select('message_enabled, request_enabled, preview_enabled, sound_enabled, vibration_enabled').eq('user_id', payload.record.user_id).maybeSingle(),
+    supabase.rpc('active_account_push_tokens', { target_user: payload.record.user_id }),
+    supabase.from('notification_preferences').select('message_enabled, open_chat_enabled, request_enabled, preview_enabled, sound_enabled, vibration_enabled').eq('user_id', payload.record.user_id).maybeSingle(),
   ])
   if (error) return Response.json({ error: error.message }, { status: 500 })
   if (!tokens?.length) return Response.json({ sent: 0 })
 
-  const kind = payload.record.data?.kind === 'chat_request' ? 'chat_request' : 'message'
-  if (kind === 'message' && preferences?.message_enabled === false) return Response.json({ sent: 0, disabled: 'message' })
-  if (kind === 'chat_request' && preferences?.request_enabled === false) return Response.json({ sent: 0, disabled: 'request' })
-  const soundEnabled = preferences?.sound_enabled !== false
-  const vibrationEnabled = preferences?.vibration_enabled !== false
-  const previewEnabled = preferences?.preview_enabled !== false
-  const channelId = soundEnabled ? (vibrationEnabled ? 'messages' : 'messages-sound') : (vibrationEnabled ? 'messages-vibrate' : 'messages-silent')
-  const roomId = payload.record.data?.room_id
-  const notificationGroup = kind === 'message' && roomId ? `chat-${roomId}` : 'chat-requests'
-  const messages = tokens.map(({ token }) => ({
-    to: token,
-    sound: soundEnabled ? 'default' : null,
-    channelId,
-    title: kind === 'chat_request' ? '새 대화 신청' : '새 메시지',
-    body: previewEnabled
-      ? (kind === 'chat_request' ? '새로운 대화 신청이 도착했어요.' : payload.record.body)
-      : (kind === 'chat_request' ? '새로운 대화 신청이 도착했어요.' : '새로운 메시지가 도착했어요.'),
-    data: { kind, room_id: roomId },
-    priority: 'high',
-    collapseId: notificationGroup,
-    threadId: notificationGroup,
-  }))
+  const disabled = getDisabledNotificationCategory(payload.record, preferences)
+  if (disabled) return Response.json({ sent: 0, disabled })
+  const messages = (tokens as Array<{ token: string; platform: 'android' | 'ios' }>).map(token => createChatPushMessage(token, payload.record, preferences))
   const expoAccessToken = Deno.env.get('EXPO_ACCESS_TOKEN')
   const response = await fetch('https://exp.host/--/api/v2/push/send', {
     method: 'POST',

@@ -1,14 +1,19 @@
+import { getAccountId } from '../lib/phoneAuth'
 import { useEffect, useRef, useState } from 'react'
 import {
-  ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable, SafeAreaView,
+  ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Linking, Platform, Pressable,
   ScrollView, StyleSheet, View,
 } from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
 import { Text, TextInput } from '../i18n/localizedUi'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import { pickProfilePhoto, ProfilePhotoPermissionError, uploadProfilePhoto } from '../lib/profilePhoto'
-import { DeviceIdentityUnavailableError, getDeviceRewardFingerprint } from '../lib/deviceIdentity'
 import { addAppBreadcrumb, captureAppError } from '../lib/observability'
 import { AgePickerSheet } from './AgePickerSheet'
+import { AccountSwitchButton } from './AccountSwitchButton'
+import { useAuthorizedAccountId } from '../lib/authorizedAccount'
+import { useI18n } from '../i18n'
+import { AppStartupScreen } from './AppStartupScreen'
 
 const genders = [
   { value: 'male', label: '남성' },
@@ -27,9 +32,13 @@ export type GuestProfile = {
 }
 
 export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (profile: GuestProfile) => void; onBack?: () => void }) {
+  const authorizedAccountId = useAuthorizedAccountId()
+  const { language } = useI18n()
   const scrollRef = useRef<ScrollView>(null)
   const submitLockRef = useRef(false)
   const [checking, setChecking] = useState(true)
+  const [profileLoadFailed, setProfileLoadFailed] = useState(false)
+  const [profileRetry, setProfileRetry] = useState(0)
   const [nickname, setNickname] = useState('')
   const [age, setAge] = useState('')
   const [agePickerVisible, setAgePickerVisible] = useState(false)
@@ -41,6 +50,9 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
 
   useEffect(() => {
     let mounted = true
+    const startedAt = Date.now()
+    setChecking(true)
+    setProfileLoadFailed(false)
 
     const findExistingProfile = async () => {
       if (!supabase) {
@@ -50,45 +62,25 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
         return
       }
 
-      const { data: sessionData } = await supabase.auth.getSession()
-      let userId = sessionData.session?.user.id
-      if (!userId) {
-        const { data: anonymousData, error: anonymousError } = await supabase.auth.signInAnonymously()
-        if (anonymousError) {
-          captureAppError(anonymousError, 'onboarding', 'prepare_anonymous_recovery')
-          if (mounted) setChecking(false)
-          return
-        }
-        userId = anonymousData.user?.id
-      }
-      if (!userId) { if (mounted) setChecking(false); return }
+      const userId = authorizedAccountId ?? await getAccountId(supabase)
+      if (!userId) throw new Error('verified_phone_required')
+      if (!mounted) return
 
-      const deviceFingerprint = await getDeviceRewardFingerprint()
-      const { data: recoveryData, error: recoveryError } = await supabase.rpc('restore_device_account', {
-        device_fingerprint: deviceFingerprint,
-      })
-      if (recoveryError && !recoveryError.message.includes('Could not find the function')) {
-        captureAppError(recoveryError, 'onboarding', 'restore_device_account')
-      }
-
-      const recovered = recoveryData as { recovered?: boolean; profile?: {
-        nickname: string; birth_year: number; gender: Gender; avatar_url?: string | null
-      } } | null
-      if (recovered?.recovered && recovered.profile) {
-        addAppBreadcrumb('anonymous_account_recovered', { chatWindowDays: 30 })
-        onComplete({
-          nickname: recovered.profile.nickname,
-          age: new Date().getFullYear() - recovered.profile.birth_year,
-          gender: recovered.profile.gender,
-          avatarUrl: recovered.profile.avatar_url ?? null,
-        })
-        return
-      }
-
-      await supabase.rpc('refresh_my_suspension')
-      const { data } = await supabase.from('profiles').select('nickname, birth_year, gender, avatar_url').eq('id', userId).maybeSingle()
+      const { error: suspensionError } = await supabase.rpc('refresh_my_suspension')
+      if (suspensionError) throw suspensionError
+      if (!mounted) return
+      const { data, error: profileError } = await supabase.from('profiles').select('nickname, birth_year, gender, avatar_url, welcome_points_claimed').eq('id', userId).maybeSingle()
+      if (profileError) throw profileError
+      if (!mounted) return
       if (data) {
-        await supabase.rpc('claim_device_welcome_points', { device_fingerprint: deviceFingerprint })
+        // The persisted server flag proves this idempotent grant already ran.
+        // Existing accounts do not need another global reward-lock RPC at launch.
+        if (data.welcome_points_claimed !== true) {
+          const { error: rewardError } = await supabase.rpc('claim_account_welcome_points')
+          if (rewardError) throw rewardError
+        }
+        if (!mounted) return
+        addAppBreadcrumb('startup_profile_ready', { duration_ms: Date.now() - startedAt, reused_authorized_id: Boolean(authorizedAccountId) })
         onComplete({
           nickname: data.nickname as string,
           age: new Date().getFullYear() - (data.birth_year as number),
@@ -100,11 +92,11 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
     }
 
     void findExistingProfile().catch(reason => {
-      captureAppError(reason, 'onboarding', 'prepare_device_identity')
-      if (mounted) setChecking(false)
+      captureAppError(reason, 'onboarding', 'prepare_account_profile')
+      if (mounted) { setProfileLoadFailed(true); setChecking(false) }
     })
     return () => { mounted = false }
-  }, [onComplete])
+  }, [onComplete, authorizedAccountId, profileRetry])
 
   const numericAge = Number(age)
   const nicknameValid = nickname.trim().length >= 2 && nickname.trim().length <= 9
@@ -143,27 +135,8 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
         return
       }
 
-      const { data: existing } = await supabase.auth.getSession()
-      let userId = existing.session?.user.id
-
-      if (!userId) {
-        const { data, error: authError } = await supabase.auth.signInAnonymously()
-        if (authError) throw authError
-        userId = data.user?.id
-      }
-
-      if (!userId) throw new Error('익명 사용자 ID를 만들지 못했습니다.')
-
-      const deviceFingerprint = await getDeviceRewardFingerprint()
-      const { data: recoveryData, error: recoveryError } = await supabase.rpc('restore_device_account', {
-        device_fingerprint: deviceFingerprint,
-      })
-      if (recoveryError && !recoveryError.message.includes('Could not find the function')) throw recoveryError
-      const recovered = recoveryData as { recovered?: boolean; profile?: { nickname: string; birth_year: number; gender: Gender; avatar_url?: string | null } } | null
-      if (recovered?.recovered && recovered.profile) {
-        onComplete({ nickname: recovered.profile.nickname, age: new Date().getFullYear() - recovered.profile.birth_year, gender: recovered.profile.gender, avatarUrl: recovered.profile.avatar_url ?? null })
-        return
-      }
+      const userId = await getAccountId(supabase)
+      if (!userId) throw new Error('verified_phone_required')
 
       const { data: profileBeforeInsert, error: profileLookupError } = await supabase
         .from('profiles').select('nickname, birth_year, gender, avatar_url').eq('id', userId).maybeSingle()
@@ -194,16 +167,7 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
         return
       }
       if (profileError) throw profileError
-      const { error: rewardError } = await supabase.rpc('claim_device_welcome_points', { device_fingerprint: deviceFingerprint })
-      if (rewardError?.message.includes('device_account_recovery_required')) {
-        const { data: retryData, error: retryError } = await supabase.rpc('restore_device_account', { device_fingerprint: deviceFingerprint })
-        if (retryError) throw retryError
-        const retry = retryData as { recovered?: boolean; profile?: { nickname: string; birth_year: number; gender: Gender; avatar_url?: string | null } } | null
-        if (retry?.recovered && retry.profile) {
-          onComplete({ nickname: retry.profile.nickname, age: new Date().getFullYear() - retry.profile.birth_year, gender: retry.profile.gender, avatarUrl: retry.profile.avatar_url ?? null })
-          return
-        }
-      }
+      const { error: rewardError } = await supabase.rpc('claim_account_welcome_points')
       if (rewardError) throw rewardError
       addAppBreadcrumb('guest_profile_created', { hasAvatar: Boolean(avatarUrl) })
       onComplete({ nickname: nickname.trim(), age: numericAge, gender: gender!, avatarUrl })
@@ -214,14 +178,10 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
         : typeof reason === 'object' && reason !== null && 'message' in reason
           ? String(reason.message)
           : '프로필을 저장하지 못했습니다.'
-      if (reason instanceof DeviceIdentityUnavailableError || message.includes('device_identity_unavailable')) {
-        setError('기기 정보를 안전하게 확인하지 못했습니다. 휴대폰을 다시 시작한 뒤 시도해 주세요.')
-      } else if (message.toLowerCase().includes('anonymous sign-ins are disabled')) {
-        setError('Supabase에서 익명 로그인을 먼저 활성화해 주세요.')
+      if (message.includes('verified_phone_required')) {
+        setError('전화번호와 기기 인증이 필요합니다. 다시 로그인해 주세요.')
       } else if (message.includes('gender') || message.includes('schema cache') || message.includes('PGRST204')) {
         setError('새 게스트 프로필 SQL 마이그레이션을 Supabase에 적용해 주세요.')
-      } else if (message.includes('device_account_recovery_required')) {
-        setError('이 기기의 이전 계정을 복구하지 못했습니다. 앱을 다시 실행한 뒤 시도해 주세요.')
       } else {
         setError(message)
       }
@@ -231,12 +191,18 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
     }
   }
 
-  if (checking) return <SafeAreaView style={styles.loading}><ActivityIndicator color="#F26B4B" /><Text style={styles.loadingText}>프로필을 확인하고 있어요</Text></SafeAreaView>
+  if (checking) return <AppStartupScreen language={language} />
+  if (profileLoadFailed) return <SafeAreaView style={styles.loading}>
+    <Text style={styles.loadingText}>{language === 'ko' ? '기존 프로필을 불러오지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.' : 'Could not load your existing profile. Check your connection and try again.'}</Text>
+    <Pressable accessibilityRole="button" onPress={() => setProfileRetry(value => value + 1)} style={{ padding: 18 }}><Text>{language === 'ko' ? '다시 불러오기' : 'Try again'}</Text></Pressable>
+  </SafeAreaView>
 
   return <SafeAreaView style={styles.safe}>
     <KeyboardAvoidingView
+      testID="guest-profile-keyboard-viewport"
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      enabled
+      behavior="padding"
       keyboardVerticalOffset={0}
     >
       <ScrollView
@@ -256,13 +222,13 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
           <View style={styles.backButton} />
         </View>
         <Text style={styles.title}>프로필을 알려주세요</Text>
-        <Text style={styles.subtitle}>회원가입 없이 이 프로필로 바로 대화를 시작할 수 있어요.</Text>
+        <Text style={styles.subtitle}>인증된 계정에 프로필을 등록하고 대화를 시작해 보세요.</Text>
         <View style={styles.adultNotice}><Text style={styles.adultNoticeTitle}>성인 전용 · 만 19세 이상</Text><Text style={styles.adultNoticeText}>미성년자는 가입하거나 이용할 수 없습니다.</Text></View>
 
         <Pressable style={styles.photoPicker} onPress={choosePhoto}>{avatarUri ? <Image source={{ uri: avatarUri }} style={styles.photo} /> : <View style={styles.photoPlaceholder}><Text style={styles.photoPlaceholderText}>사진</Text></View>}<Text style={styles.photoAction}>{avatarUri ? '사진 변경' : '프로필 사진 등록'}</Text></Pressable>
 
         <Text style={styles.label}>닉네임</Text>
-        <TextInput value={nickname} onChangeText={setNickname} maxLength={9} placeholder="2~9자로 입력" placeholderTextColor="#A8A29E" autoCapitalize="none" returnKeyType="done" onFocus={() => setTimeout(() => scrollRef.current?.scrollTo({ y: 330, animated: true }), 120)} onSubmitEditing={() => { Keyboard.dismiss(); setAgePickerVisible(true) }} style={styles.input} />
+        <TextInput value={nickname} onChangeText={setNickname} maxLength={9} placeholder="2~9자로 입력" placeholderTextColor="#A8A29E" autoCapitalize="none" returnKeyType="done" onSubmitEditing={() => { Keyboard.dismiss(); setAgePickerVisible(true) }} style={styles.input} />
         <Text style={styles.hint}>{nickname.length}/9</Text>
 
         <Text style={styles.label}>나이</Text>
@@ -276,6 +242,7 @@ export function GuestProfileOnboarding({ onComplete, onBack }: { onComplete: (pr
         {error ? <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View> : null}
         <Pressable disabled={!canSubmit} onPress={submit} style={[styles.button, !canSubmit && styles.buttonDisabled]}><Text style={styles.buttonText}>{submitting ? '프로필 만드는 중…' : '잉톡 시작하기'}</Text></Pressable>
         <Text style={styles.footnote}>{isSupabaseConfigured ? '임시 익명 ID로 안전하게 저장됩니다.' : '데모 모드에서는 이 기기에만 저장됩니다.'}</Text>
+        {supabase && <AccountSwitchButton beforeProfile disabled={submitting} />}
       </ScrollView>
     </KeyboardAvoidingView>
     <AgePickerSheet visible={agePickerVisible} value={age ? Number(age) : null} onCancel={() => setAgePickerVisible(false)} onConfirm={nextAge => { setAge(String(nextAge)); setAgePickerVisible(false) }} />
