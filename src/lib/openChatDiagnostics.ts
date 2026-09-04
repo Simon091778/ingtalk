@@ -1,0 +1,34 @@
+export type OpenChatDiagnosticEvent =
+  | 'OPEN_CHAT_RECORD_START'
+  | 'OPEN_CHAT_RECORD_STOP'
+  | 'OPEN_CHAT_RECORD_CANCEL'
+  | 'OPEN_CHAT_UPLOAD_START'
+  | 'OPEN_CHAT_UPLOAD_SUCCESS'
+  | 'OPEN_CHAT_UPLOAD_FAILURE'
+  | 'OPEN_CHAT_MESSAGE_INSERT_SUCCESS'
+  | 'OPEN_CHAT_MESSAGE_INSERT_FAILURE'
+  | 'OPEN_CHAT_AUDIO_PLAY_START'
+  | 'OPEN_CHAT_AUDIO_PLAY_END'
+  | 'OPEN_CHAT_AUDIO_PLAY_FAILURE'
+  | 'OPEN_CHAT_REALTIME_CONNECTED'
+  | 'OPEN_CHAT_REALTIME_DISCONNECTED'
+  | 'OPEN_CHAT_OWNER_CHANGED'
+  | 'OPEN_CHAT_USER_KICKED'
+  | 'OPEN_CHAT_ROOM_CLOSED'
+  | 'OPEN_CHAT_REQUEST_PARTICIPANT_PRESS'
+  | 'OPEN_CHAT_REQUEST_DETAIL_OPEN'
+  | 'OPEN_CHAT_REQUEST_BUTTON_PRESS_IN'
+  | 'OPEN_CHAT_REQUEST_BUTTON_PRESS'
+  | 'OPEN_CHAT_REQUEST_TARGET_SET'
+  | 'OPEN_CHAT_REQUEST_DETAIL_CLOSE'
+  | 'OPEN_CHAT_REQUEST_COMPOSER_OPEN'
+  | 'OPEN_CHAT_REQUEST_COMPOSER_RENDER'
+  | 'OPEN_CHAT_REQUEST_TARGET_INVALID'
+
+type SafeDetails = Record<string, boolean | number | string | null | undefined>
+
+export function logOpenChatDiagnostic(event: OpenChatDiagnosticEvent, details?: SafeDetails) {
+  if (typeof __DEV__ === 'undefined' || !__DEV__) return
+  if (details) console.info(`[OPEN_CHAT_QA] ${event}`, details)
+  else console.info(`[OPEN_CHAT_QA] ${event}`)
+}

@@ -3,6 +3,7 @@ node_modules/
 .expo/
 dist/
 .env
+.private/
 firebase-service-account.json
 *.log
 *.tsbuildinfo
@@ -14,5 +15,9 @@ backups/
 .expo-release-check-ios-final/
 admin/dist/
 *.aab
+*.apk
 supabase/.temp/
 supabase/.branches/
+
+.vercel
+.env*

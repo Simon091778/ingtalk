@@ -2,7 +2,8 @@
   "expo": {
     "name": "Ingtalk",
     "slug": "ingtalk",
-    "version": "0.1.0",
+    "scheme": "ingtalk",
+    "version": "0.2.0",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/icon.png",
@@ -36,7 +37,6 @@
       },
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS",
         "android.permission.CAMERA",
@@ -49,7 +49,17 @@
       "favicon": "./assets/icon.png"
     },
     "plugins": [
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./assets/sounds/ingtalk_default_alarm.wav"
+          ],
+          "defaultChannel": "messages-v3"
+        }
+      ],
+      "./plugins/withChatNotificationGrouping",
+      "./plugins/withPhoneNumberHint",
       [
         "expo-location",
         {
@@ -65,8 +75,7 @@
         "expo-image-picker",
         {
           "photosPermission": "Ingtalk accesses only the photos you choose for profiles, posts, and chats.",
-          "cameraPermission": false,
-          "microphonePermission": false
+          "cameraPermission": false
         }
       ],
       [
@@ -85,7 +94,14 @@
           "optimizeAdLoading": true
         }
       ],
-      "@sentry/react-native/expo"
+      "@sentry/react-native/expo",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "음성 메시지를 녹음하려면 마이크 권한이 필요합니다."
+        }
+      ],
+      "expo-asset"
     ],
     "extra": {
       "eas": {

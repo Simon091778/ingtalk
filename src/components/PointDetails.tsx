@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Text } from '../i18n/localizedUi'
 import { supabase } from '../lib/supabase'
@@ -19,14 +19,16 @@ const reasonLabels: Record<string, string> = {
   reward_talk_write: '톡쓰기 등록',
   reward_board_post: '익명 게시글 작성',
   reward_board_comment: '익명 댓글 작성',
+  reward_rewarded_ad: '광고 시청 보상',
   chat_request: '대화 신청',
+  open_chat_room_create: '수다방 만들기',
   profile_details_update: '프로필 정보 수정',
   point_purchase: '포인트 충전',
   point_purchase_refund: '포인트 구매 환불',
   admin_adjustment: '운영자 포인트 조정',
 }
 
-export function PointDetails({ visible, balance, attendanceAvailable, claimingAttendance, onClose, onCharge, onAttendance }: {
+export function PointDetails({ visible, balance, attendanceAvailable, claimingAttendance, onClose, onCharge, onAttendance, embeddedIos = false }: {
   visible: boolean
   balance: number | null
   attendanceAvailable: boolean | null
@@ -34,6 +36,7 @@ export function PointDetails({ visible, balance, attendanceAvailable, claimingAt
   onClose: () => void
   onCharge: () => void
   onAttendance: () => Promise<void>
+  embeddedIos?: boolean
 }) {
   const i18n = useI18n()
   const [transactions, setTransactions] = useState<PointTransaction[]>([])
@@ -66,9 +69,9 @@ export function PointDetails({ visible, balance, attendanceAvailable, claimingAt
     onClose()
   }
 
-  return <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} onRequestClose={historyVisible ? () => setHistoryVisible(false) : closeDetails}>
-    <SwipeDismissView onDismissStart={() => { if (!historyVisible) setClosingBySwipe(true) }} onDismiss={historyVisible ? () => setHistoryVisible(false) : closeDetails}>
-    <SafeAreaView edges={['top', 'bottom']} style={styles.safe}>
+  const details = <>
+    <SwipeDismissView visible={visible} onDismissStart={() => { if (!historyVisible) setClosingBySwipe(true) }} onDismiss={historyVisible ? () => setHistoryVisible(false) : closeDetails}>
+    <SafeAreaView edges={embeddedIos ? ['bottom'] : ['top', 'bottom']} style={styles.safe}>
       {historyVisible ? <>
         <View style={styles.header}><Pressable onPress={() => setHistoryVisible(false)} style={styles.headerButton}><Text style={styles.close}>이전</Text></Pressable><Text style={styles.title}>포인트 내역</Text><View style={styles.headerButton} /></View>
         <ScrollView contentContainerStyle={styles.historyContent}>
@@ -80,6 +83,7 @@ export function PointDetails({ visible, balance, attendanceAvailable, claimingAt
         <View style={styles.header}><Pressable onPress={closeDetails} style={styles.headerButton}><Text style={styles.close}>닫기</Text></Pressable><Text style={styles.title}>포인트 상세</Text><View style={styles.headerButton} /></View>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.balanceCard}><Text style={styles.balanceLabel}>현재 포인트</Text><Text style={styles.balance}>{balance == null ? '—' : `${formatNumber(balance, i18n.language, i18n.country)}P`}</Text></View>
+          <Text style={styles.rewardPolicy}>{i18n.language === 'ko' ? '50P 활동 보상은 항목별로 계정과 기기당 24시간에 한 번 지급됩니다. 계정을 바꿔도 같은 기기의 수령 이력은 유지됩니다.' : 'Each 50P activity reward is available once per 24 hours per account and device. Switching accounts does not reset the device cooldown.'}</Text>
           <Pressable onPress={onCharge} style={styles.chargeButton}><Text style={styles.chargeText}>충전하기</Text><Text style={styles.arrow}>›</Text></Pressable>
           <Pressable disabled={attendanceAvailable !== true || claimingAttendance} onPress={() => void attendance()} style={[styles.attendanceButton, (attendanceAvailable !== true || claimingAttendance) && styles.disabled]}><Text style={styles.attendanceText}>{claimingAttendance ? '출석 확인 중…' : attendanceAvailable === null ? '출석 상태 확인 중…' : attendanceAvailable ? '출석체크 · +50P' : '출석체크 완료 · 24시간 후 가능'}</Text></Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="포인트 내역 상세 보기" onPress={() => setHistoryVisible(true)} style={styles.historyButton}><View><Text style={styles.historyButtonTitle}>포인트 내역 보기</Text><Text style={styles.historyButtonDescription}>적립 및 사용 내역을 확인해요</Text></View><Text style={styles.arrow}>›</Text></Pressable>
@@ -87,10 +91,21 @@ export function PointDetails({ visible, balance, attendanceAvailable, claimingAt
       </>}
     </SafeAreaView>
     </SwipeDismissView>
+  </>
+
+  if (embeddedIos) {
+    if (!visible) return null
+    return <View accessibilityViewIsModal style={styles.embeddedOverlay}>{details}</View>
+  }
+
+  return <Modal visible={visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={historyVisible ? () => setHistoryVisible(false) : closeDetails}>
+    {details}
   </Modal>
 }
 
 const styles = StyleSheet.create({
+  rewardPolicy: { color: '#78716C', fontSize: 11, lineHeight: 17, marginTop: 12 },
+  embeddedOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 400, elevation: 400, backgroundColor: '#FFF9F5' },
   safe: { flex: 1, backgroundColor: '#FFF9F5' },
   header: { height: 58, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#EEE7E2', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerButton: { width: 70, minHeight: 48, justifyContent: 'center', paddingHorizontal: 8 }, close: { color: '#F26B4B', fontSize: 15, fontWeight: '900' }, title: { color: '#1F2937', fontSize: 17, fontWeight: '900' },

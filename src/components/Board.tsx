@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ActivityIndicator, Alert, AppState, Dimensions, FlatList, Image, InputAccessoryView, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
+import { getAccountId } from '../lib/phoneAuth'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { markRefreshNavigation, measureRefresh } from '../lib/refreshPerf'
+import { createRefreshQueue } from '../lib/refreshQueue'
+import { useRefreshPerfScreen } from '../hooks/useRefreshPerfScreen'
+import { ActivityIndicator, Alert, AppState, Dimensions, FlatList, Image, InputAccessoryView, Keyboard, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native'
 import { Text, TextInput } from '../i18n/localizedUi'
 import { DropdownChevron } from './DropdownChevron'
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler'
@@ -13,8 +17,9 @@ import { publicContentErrorMessage } from '../lib/contentModeration'
 import { formatDateTime, useI18n } from '../i18n'
 import { boardAliasDisplayName } from '../lib/boardAlias'
 import { BoardBannerAd } from './BoardBannerAd'
+import { useIosKeyboardInset } from '../hooks/useIosKeyboardInset'
+import { mainTabHeaderActionStyle, mainTabHeaderActionTextStyle, mainTabHeaderSpacing, mainTabListHorizontalInset, mainTabListTopGap, mainTabSubtitleStyle, mainTabTitleStyle } from '../lib/mainTabLayout'
 
-const BOARD_COMPOSER_ACCESSORY_ID = 'ingtalk-board-composer-actions'
 const boardFilters = ['전체', '인기'] as const
 type BoardFilter = typeof boardFilters[number]
 type BoardCountryFilter = 'ALL' | 'KR' | 'US' | 'OTHER'
@@ -153,12 +158,12 @@ function BoardImageViewer({ uri, onClose, embedded = false }: { uri: string | nu
   const viewerStyle = useAnimatedStyle(() => ({ transform: [{ translateY: dismissTranslateY.value }] }))
 
   if (!uri) return null
-  const viewer = <Animated.View style={[styles.boardImageViewerFrame, embedded && styles.boardImageViewerEmbedded, viewerStyle]}><SafeAreaView style={styles.boardImageViewerSafe}>
-        <View style={styles.boardImageViewerHeader}><View style={styles.boardImageViewerHeading}><Text style={styles.boardImageViewerTitle}>게시글 사진</Text><Text style={styles.boardImageViewerHint}>두 손가락으로 확대 · 한 손가락으로 이동 · 두 번 탭</Text></View><Pressable accessibilityRole="button" accessibilityLabel="사진 닫기" style={styles.boardImageViewerClose} onPress={onClose}><Text style={styles.boardImageViewerCloseText}>닫기</Text></Pressable></View>
+  const viewer = <Animated.View style={[styles.boardImageViewerFrame, embedded && styles.boardImageViewerEmbedded, viewerStyle]}><InsetSafeAreaView edges={embedded ? [] : ['top', 'bottom']} style={styles.boardImageViewerSafe}>
+        <View style={[styles.boardImageViewerHeader, Platform.OS === 'android' && styles.boardImageViewerHeaderAndroid]}><View style={styles.boardImageViewerHeading}><Text style={styles.boardImageViewerTitle}>게시글 사진</Text><Text style={styles.boardImageViewerHint}>두 손가락으로 확대 · 한 손가락으로 이동 · 두 번 탭</Text></View><Pressable accessibilityRole="button" accessibilityLabel="사진 닫기" style={styles.boardImageViewerClose} onPress={onClose}><Text style={styles.boardImageViewerCloseText}>닫기</Text></Pressable></View>
         <GestureDetector gesture={gestures}><Animated.View style={styles.boardImageViewerArea}><Animated.Image source={{ uri }} resizeMode="contain" style={[styles.boardImageViewerImage, imageStyle]} /></Animated.View></GestureDetector>
-      </SafeAreaView></Animated.View>
+      </InsetSafeAreaView></Animated.View>
   if (embedded) return viewer
-  return <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+  return <Modal visible transparent animationType="fade" statusBarTranslucent={Platform.OS !== 'android'} onRequestClose={onClose}>
     <GestureHandlerRootView style={styles.flex}>
       {viewer}
     </GestureHandlerRootView>
@@ -212,9 +217,9 @@ function BoardRequestComposer({ target, onClose }: { target: BoardRequestTarget 
     if (androidFocusTimerRef.current) clearTimeout(androidFocusTimerRef.current)
     androidFocusTimerRef.current = setTimeout(() => messageInputRef.current?.focus(), 300)
   }}>
-    <SafeAreaView style={[styles.safe, styles.boardDarkPage]}>
+    <InsetSafeAreaView edges={['top', 'bottom']} style={[styles.safe, styles.boardDarkPage]}>
       <View style={[styles.modalHeader, styles.boardDarkHeader]}><Pressable style={styles.headerActionButton} hitSlop={6} onPress={onClose}><Text style={[styles.close, styles.boardAccentText]}>취소</Text></Pressable><Text style={[styles.modalTitle, styles.boardDarkTitle]}>대화 신청</Text><View style={styles.spacer} /></View>
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <KeyboardAvoidingView testID="board-request-keyboard-viewport" style={styles.flex} enabled behavior="padding" keyboardVerticalOffset={0}>
       <View style={styles.requestComposer}>
         <View style={styles.requestAvatar}><Text style={[styles.requestAvatarText, { color: anonymousColor(null) }]}>{target?.nickname[0]}</Text></View>
         <Text style={[styles.requestName, styles.boardDarkTitle]}>{target?.nickname}님에게</Text>
@@ -227,7 +232,7 @@ function BoardRequestComposer({ target, onClose }: { target: BoardRequestTarget 
       {Platform.OS === 'android' && keyboardVisible && <View style={[styles.requestKeyboardAction, styles.boardDarkHeader]}>{renderSubmitButton(true)}</View>}
       </KeyboardAvoidingView>
       {Platform.OS === 'ios' && <InputAccessoryView nativeID="board-request-keyboard-action"><View style={[styles.requestKeyboardAction, styles.boardDarkHeader]}>{renderSubmitButton(true)}</View></InputAccessoryView>}
-    </SafeAreaView>
+    </InsetSafeAreaView>
   </Modal>
 }
 
@@ -250,6 +255,7 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
   const [comments, setComments] = useState<BoardComment[]>([])
   const [body, setBody] = useState('')
   const [loading, setLoading] = useState(false)
+  useRefreshPerfScreen('BoardDetail', comments, !loading, comments.length, post?.id ?? null)
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [commentKeyboardVisible, setCommentKeyboardVisible] = useState(false)
@@ -264,8 +270,9 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
   useEffect(() => {
     if (!post) return
     dismissing.value = false
-    sheetTranslateX.value = 0
+    sheetTranslateX.value = screenWidth
     sheetTranslateY.value = 0
+    requestAnimationFrame(() => { sheetTranslateX.value = withTiming(0, { duration: 210 }) })
     setClosingByGesture(false)
     setIosPreviewImageUrl(null)
     setReplyingTo(null)
@@ -275,7 +282,7 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
   const load = useCallback(async (showLoading = true) => {
     if (!supabase || !post) return
     if (showLoading) setLoading(true)
-    const { data, error } = await supabase.rpc('list_board_comments', { post_uuid: post.id })
+    const { data, error } = await measureRefresh('BoardDetail', () => supabase!.rpc('list_board_comments', { post_uuid: post.id }))
     if (error) Alert.alert('댓글을 불러오지 못했어요', error.message)
     else setComments(((data ?? []) as BoardComment[]).map(item => ({ ...item, nickname: boardAliasDisplayName(item.nickname, i18n.language), parent_nickname: boardAliasDisplayName(item.parent_nickname, i18n.language) || null, reply_to_nickname: boardAliasDisplayName(item.reply_to_nickname, i18n.language) || null, like_count: Number(item.like_count), liked_by_me: Boolean(item.liked_by_me) })))
     if (showLoading) setLoading(false)
@@ -345,7 +352,8 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
   const renderCommentComposer = () => <View style={[
     styles.commentComposerWrap,
     styles.boardDarkHeader,
-    { paddingBottom: commentKeyboardVisible ? 0 : Math.max(insets.bottom, 10) },
+    // Android's modal SafeAreaView owns this inset; keep only iOS/web's existing padding.
+    Platform.OS !== 'android' && { paddingBottom: commentKeyboardVisible ? 0 : Math.max(insets.bottom, 10) },
   ]}>
     {replyingTo && <View style={styles.replyingBar}><Text numberOfLines={1} style={styles.replyingText}><Text style={styles.replyingName}>{replyingTo.nickname}</Text>님에게 답글 작성 중</Text><Pressable accessibilityRole="button" accessibilityLabel="답글 작성 취소" hitSlop={8} onPress={() => setReplyingTo(null)}><Text style={styles.replyingCancel}>×</Text></Pressable></View>}
     <View style={[styles.commentBar, styles.boardDarkHeader]}><TextInput ref={commentInputRef} value={body} onChangeText={setBody} maxLength={300} returnKeyType="send" keyboardAppearance="dark" onSubmitEditing={() => void addComment()} placeholder={replyingTo ? `${replyingTo.nickname}님에게 답글` : '댓글을 입력하세요'} placeholderTextColor="#7F8B93" style={[styles.commentInput, styles.boardDarkInput]} /><Pressable disabled={!body.trim() || saving} onPress={addComment} style={[styles.commentSend, styles.boardAccentButton, (!body.trim() || saving) && styles.disabled]}><Text style={styles.commentSendText}>{replyingTo ? '답글' : '등록'}</Text></Pressable></View>
@@ -412,22 +420,31 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
     transform: [{ translateX: sheetTranslateX.value }, { translateY: sheetTranslateY.value }],
   }))
 
-  return <Modal visible={post !== null} animationType={Platform.OS === 'android' ? 'fade' : closingByGesture ? 'none' : 'slide'} onRequestClose={closeCommentSheet}>
-    <GestureHandlerRootView style={styles.flex}>
-      <GestureDetector gesture={postScreenGesture}>
-        <Animated.View style={[styles.safe, styles.boardDarkPage, { paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 20 : 0) }, dismissAnimatedStyle]}>
+  const commentContent = <>
       <GestureDetector gesture={dismissDownGesture}><View style={[styles.modalHeader, styles.commentModalHeader, styles.boardDarkHeader]}><Pressable accessibilityRole="button" accessibilityLabel="게시글 화면 닫기" style={[styles.headerActionButton, styles.commentCloseButton]} hitSlop={14} onPress={closeCommentSheet}><Text style={[styles.close, styles.boardAccentText]}>닫기</Text></Pressable><Text style={[styles.modalTitle, styles.boardDarkTitle]}>게시글</Text><Pressable accessibilityRole="button" accessibilityLabel="게시글 새로고침" accessibilityState={{ busy: refreshing, disabled: refreshing }} disabled={refreshing} onPress={() => void refreshPostDetails()} style={styles.commentHeaderRefreshButton}>{refreshing ? <ActivityIndicator size="small" color="#7DD3FC" /> : <Text style={styles.commentHeaderRefreshIcon}>↻</Text>}</Pressable></View></GestureDetector>
       <KeyboardAvoidingView
+        testID="board-comment-keyboard-viewport"
         style={[styles.commentKeyboard, styles.boardDarkPage]}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        enabled
+        behavior="padding"
         keyboardVerticalOffset={0}
       >
-        {loading ? <View style={styles.center}><ActivityIndicator color="#7DD3FC" /></View> : <FlatList data={comments} keyExtractor={item => item.id} contentContainerStyle={[styles.commentList, { paddingBottom: 18 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} refreshing={refreshing} onRefresh={() => void refreshPostDetails()} alwaysBounceVertical overScrollMode="always" ListHeaderComponent={post ? <><PostDetailHeader post={post} userId={userId} onRequest={onRequest} onLike={onLike} onDislike={onDislike} onDelete={onDelete} onImagePress={Platform.OS === 'ios' ? setIosPreviewImageUrl : onImagePress} /><BoardBannerAd language={i18n.language} /><View style={styles.boardDetailCommentDivider}><Text style={styles.boardDetailCommentDividerText}>{i18n.language === 'ko' ? '댓글' : 'Comments'}</Text></View></> : null} ListEmptyComponent={<Text style={[styles.empty, styles.boardDarkMuted]}>첫 댓글을 남겨보세요.</Text>} renderItem={({ item }) => {
+        {loading ? <View style={styles.center}><ActivityIndicator color="#7DD3FC" /></View> : <FlatList data={comments} keyExtractor={item => item.id} contentContainerStyle={[styles.commentList, { paddingBottom: 18 }]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'} refreshing={refreshing} onRefresh={() => void refreshPostDetails()} alwaysBounceVertical overScrollMode="always" ListHeaderComponent={post ? <><PostDetailHeader post={post} userId={userId} onRequest={onRequest} onLike={onLike} onDislike={onDislike} onDelete={onDelete} onImagePress={Platform.OS === 'ios' ? setIosPreviewImageUrl : onImagePress} /><BoardBannerAd language={i18n.language} /><View style={styles.boardDetailCommentDivider}><Text style={styles.boardDetailCommentDividerText}>{i18n.language === 'ko' ? '댓글' : 'Comments'}</Text></View></> : null} ListEmptyComponent={<Text style={[styles.empty, styles.boardDarkMuted]}>첫 댓글을 남겨보세요.</Text>} renderItem={({ item }) => {
           const isReply = Boolean(item.parent_id)
           return <View style={[styles.comment, styles.boardDarkCard, isReply && styles.replyComment]}><View style={styles.commentBadgeRow}><Text style={[styles.commentBadge, styles.boardDarkBadge, isReply && styles.replyBadge]}>{isReply ? item.reply_to_nickname ? `↳ ${item.reply_to_nickname}에게 답글` : '↳ 삭제된 댓글에 답글' : `댓글 ${rootCommentNumbers.get(item.id) ?? ''}`}</Text></View><View style={styles.rowBetween}>{item.author_id !== userId && post ? <Pressable onPress={() => onRequest({ postId: post.id, authorId: item.author_id, nickname: item.nickname, topic: item.body, contentType: 'comment', contentId: item.id })}><Text style={[styles.commentName, styles.selectableName, { color: anonymousColor(item.gender) }]}>{item.nickname}</Text></Pressable> : <Text style={[styles.commentName, { color: anonymousColor(item.gender) }]}>{item.nickname}</Text>}{item.author_id === userId && <Pressable onPress={() => removeComment(item)}><Text style={styles.deleteText}>삭제</Text></Pressable>}</View><Text style={[styles.commentBody, styles.commentBodyOrdered, styles.boardDarkBody]}>{item.body}</Text><View style={styles.commentFooter}><View style={styles.commentFooterActions}><Pressable onPress={() => void toggleCommentLike(item)} style={styles.commentLikeButton}><Text style={[styles.likeIcon, item.liked_by_me && styles.likeIconActive]}>{item.liked_by_me ? '♥' : '♡'}</Text><Text style={[styles.statText, item.liked_by_me && styles.likeTextActive]}>좋아요 {item.like_count}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`${item.nickname}님에게 답글 작성`} onPress={() => beginReply(item)} style={styles.commentReplyButton}><Text style={styles.commentReplyText}>답글</Text></Pressable></View><Text style={styles.commentElapsed}>{elapsed(item.created_at)}</Text></View></View>
         }} />}
         {renderCommentComposer()}
       </KeyboardAvoidingView>
+  </>
+
+  return <Modal visible={post !== null} animationType="none" onRequestClose={closeCommentSheet}>
+    <GestureHandlerRootView style={styles.flex}>
+      <GestureDetector gesture={postScreenGesture}>
+        <Animated.View style={[styles.safe, styles.boardDarkPage, Platform.OS !== 'android' && { paddingTop: Math.max(insets.top, Platform.OS === 'ios' ? 20 : 0) }, dismissAnimatedStyle]}>
+      {/* Match SupportCenter's native modal insets without adding app-root padding again. */}
+      {Platform.OS === 'android'
+        ? <InsetSafeAreaView edges={['top', 'bottom']} style={[styles.safe, styles.boardDarkPage]}>{commentContent}</InsetSafeAreaView>
+        : commentContent}
       {Platform.OS === 'ios' && <BoardImageViewer uri={iosPreviewImageUrl} embedded onClose={() => setIosPreviewImageUrl(null)} />}
         </Animated.View>
       </GestureDetector>
@@ -435,8 +452,13 @@ function CommentSheet({ post, userId, onClose, onChanged, onRequest, onLike, onD
   </Modal>
 }
 
-export function Board() {
-  const insets = useSafeAreaInsets()
+type BoardProps = {
+  isActive?: boolean
+  refreshKey?: number
+  onComposerVisibilityChange?: (visible: boolean) => void
+}
+
+export function Board({ onComposerVisibilityChange, isActive = true, refreshKey = 0 }: BoardProps) {
   const i18n = useI18n()
   const countryLabels: Record<BoardCountryFilter, string> = i18n.language === 'ko'
     ? { ALL: '모든 국가', KR: '한국', US: '미국', OTHER: '그 외' }
@@ -447,8 +469,10 @@ export function Board() {
   const [posts, setPosts] = useState<BoardPost[]>([])
   const [userId, setUserId] = useState('')
   const [loading, setLoading] = useState(true)
+  useRefreshPerfScreen('Board', posts, !loading, posts.length, true, isActive, refreshKey)
   const [refreshing, setRefreshing] = useState(false)
   const [composerVisible, setComposerVisible] = useState(false)
+  const composerKeyboardInset = useIosKeyboardInset(composerVisible)
   const [selectedPost, setSelectedPost] = useState<BoardPost | null>(null)
   const [requestTarget, setRequestTarget] = useState<BoardRequestTarget | null>(null)
   const [title, setTitle] = useState('')
@@ -456,8 +480,6 @@ export function Board() {
   const [imageUri, setImageUri] = useState<string | null>(null)
   const [imageMimeType, setImageMimeType] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [composerKeyboardVisible, setComposerKeyboardVisible] = useState(false)
-  const [composerFocusedInput, setComposerFocusedInput] = useState<'title' | 'body'>('title')
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
   const [boardFilter, setBoardFilter] = useState<BoardFilter>('전체')
   const [countryFilter, setCountryFilter] = useState<BoardCountryFilter>(i18n.country === 'KR' || i18n.country === 'US' ? i18n.country : 'OTHER')
@@ -465,6 +487,9 @@ export function Board() {
   const [searchVisible, setSearchVisible] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<TextInput>(null)
+  const composerTitleInputRef = useRef<TextInput>(null)
+  const composerBodyInputRef = useRef<TextInput>(null)
+  const refreshLifetime = useRef(0)
 
   const visiblePosts = useMemo(() => {
     let filtered: BoardPost[]
@@ -497,16 +522,12 @@ export function Board() {
 
   useEffect(() => setCountryFilter(i18n.country === 'KR' || i18n.country === 'US' ? i18n.country : 'OTHER'), [i18n.country])
 
-  useEffect(() => {
-    if (Platform.OS !== 'ios') return
-    const shown = Keyboard.addListener('keyboardWillShow', () => setComposerKeyboardVisible(true))
-    const hidden = Keyboard.addListener('keyboardWillHide', () => setComposerKeyboardVisible(false))
-    return () => { shown.remove(); hidden.remove() }
-  }, [])
+  useEffect(() => () => onComposerVisibilityChange?.(false), [onComposerVisibilityChange])
 
-  const refresh = useCallback(async () => {
-    if (!supabase) return
-    const { data, error } = await supabase.rpc('list_board_posts', { result_limit: 100, country_filter: countryFilter === 'ALL' ? null : countryFilter })
+  const refreshQueue = useMemo(() => createRefreshQueue(async isCurrent => {
+    if (!supabase || !isActive) return
+    const { data, error } = await measureRefresh('Board', () => supabase!.rpc('list_board_posts', { result_limit: 100, country_filter: countryFilter === 'ALL' ? null : countryFilter }))
+    if (!isCurrent()) return
     if (error) Alert.alert('게시판을 불러오지 못했어요', error.message)
     else {
       const nextPosts = ((data ?? []) as BoardPost[]).map(item => ({ ...item, nickname: boardAliasDisplayName(item.nickname, i18n.language), comment_count: Number(item.comment_count), view_count: Number(item.view_count), like_count: Number(item.like_count), liked_by_me: Boolean(item.liked_by_me), dislike_count: Number(item.dislike_count ?? 0), disliked_by_me: Boolean(item.disliked_by_me) }))
@@ -514,30 +535,49 @@ export function Board() {
       setSelectedPost(current => current ? nextPosts.find(item => item.id === current.id) ?? null : null)
     }
     setLoading(false)
-  }, [countryFilter, i18n.language])
+  }), [countryFilter, i18n.language, isActive])
+  const currentQueue = useRef<typeof refreshQueue | null>(refreshQueue)
+  useLayoutEffect(() => {
+    currentQueue.current = refreshQueue
+    return () => { currentQueue.current = null; refreshQueue.cancel() }
+  }, [refreshQueue])
+  const refresh = useCallback(async () => {
+    if (currentQueue.current !== refreshQueue) return
+    try { await refreshQueue.run() } catch (error) { captureAppError(error, 'board', 'refresh_list') }
+  }, [refreshQueue])
 
   const refreshBoardList = async () => {
     if (refreshing) return
+    markRefreshNavigation('Board', 'manual refresh')
     setRefreshing(true)
+    const lifetime = refreshLifetime.current
     try {
       await refresh()
     } finally {
-      setRefreshing(false)
+      if (lifetime === refreshLifetime.current) setRefreshing(false)
     }
   }
 
+  const selectBoardFilter = (nextFilter: BoardFilter) => {
+    setBoardFilter(nextFilter)
+    void refreshBoardList()
+  }
+
   useEffect(() => {
-    if (!supabase) return
+    if (!isActive || !supabase) return
+    let current = true
     const client = supabase
-    void client.auth.getSession().then(({ data }) => setUserId(data.session?.user.id ?? ''))
+    setRefreshing(false)
+    void getAccountId(client).then(id => { if (current) setUserId(id ?? '') }).catch(() => { if (current) setUserId('') })
     void refresh()
     const channel = client.channel('board-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'board_posts' }, () => void refresh())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'board_comments' }, () => void refresh())
       .subscribe()
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') void refresh() })
-    return () => { subscription.remove(); void client.removeChannel(channel) }
-  }, [refresh])
+    return () => { current = false; refreshLifetime.current++; refreshQueue.cancel(); subscription.remove(); void client.removeChannel(channel) }
+  }, [refresh, refreshQueue, isActive, refreshKey])
+  useEffect(() => { if (!isActive) { setRefreshing(false); setSelectedPost(null); setRequestTarget(null); setComposerVisible(false); onComposerVisibilityChange?.(false); setCountryPickerVisible(false); setPreviewImageUrl(null) } }, [isActive, onComposerVisibilityChange])
 
   const addPost = async () => {
     if (!supabase || !userId || !title.trim() || !body.trim() || saving) return
@@ -551,6 +591,7 @@ export function Board() {
       setImageUri(null)
       setImageMimeType(null)
       setComposerVisible(false)
+      onComposerVisibilityChange?.(false)
       await refresh()
     } catch (reason) {
       const message = publicContentErrorMessage(reason, '사진 또는 게시글을 저장하지 못했습니다.')
@@ -578,13 +619,19 @@ export function Board() {
   const closeComposer = () => {
     if (saving) return
     Keyboard.dismiss()
-    setComposerKeyboardVisible(false)
     setComposerVisible(false)
-    setComposerFocusedInput('title')
+    onComposerVisibilityChange?.(false)
     setTitle('')
     setBody('')
     setImageUri(null)
     setImageMimeType(null)
+  }
+
+  const openComposer = () => {
+    if (composerVisible) return
+    Keyboard.dismiss()
+    setComposerVisible(true)
+    onComposerVisibilityChange?.(true)
   }
 
   const removePost = (post: BoardPost) => Alert.alert('게시글을 삭제할까요?', '게시글과 댓글이 모두 삭제됩니다.', [
@@ -648,25 +695,39 @@ export function Board() {
   const openNicknameMenu = (target: BoardRequestTarget) => {
     const requestAction = { text: '대화 신청', onPress: () => { setSelectedPost(null); setRequestTarget(target) } }
     const reportAction = { text: '신고하기', onPress: () => Alert.alert('신고 사유 선택', `${target.nickname}님의 ${target.contentType === 'post' ? '게시글' : '댓글'} 신고 사유를 선택해 주세요.`, [
-        { text: '취소', style: 'cancel' },
+        { text: '취소', style: 'cancel', onPress: Platform.OS === 'android' ? () => setTimeout(() => openNicknameMenu(target), 100) : undefined },
         { text: '부적절한 내용', onPress: () => void submitBoardReport(target, 'inappropriate') },
         { text: '미성년자 의심', style: 'destructive', onPress: () => void submitBoardReport(target, 'suspected_minor') },
       ]) }
     Alert.alert(target.nickname, '원하는 기능을 선택해 주세요.', Platform.OS === 'ios'
       ? [{ text: '취소', style: 'cancel' }, requestAction, reportAction]
-      : [{ text: '취소', style: 'cancel' }, reportAction, requestAction])
+      : [{ text: '취소', style: 'cancel' }, reportAction, requestAction],
+    { cancelable: true })
   }
 
   const renderComposerActions = () => <View style={[
     styles.composerFooter,
     styles.boardDarkHeader,
-    Platform.OS === 'ios' && !composerKeyboardVisible && styles.composerFooterIos,
   ]}><Pressable disabled={saving} style={[styles.cancelButton, styles.boardDarkCancel]} onPress={closeComposer}><Text style={[styles.cancelText, styles.boardDarkBody]}>취소</Text></Pressable><Pressable disabled={!title.trim() || !body.trim() || saving} style={[styles.submitButton, styles.boardAccentButton, (!title.trim() || !body.trim() || saving) && styles.disabled]} onPress={addPost}><Text style={styles.submitText}>{saving ? '등록 중…' : '등록'}</Text></Pressable></View>
 
+  const renderComposer = () => <InsetSafeAreaView edges={Platform.OS === 'ios' && composerKeyboardInset > 0 ? ['top'] : ['top', 'bottom']} style={[styles.composerSafe, styles.boardDarkPage, Platform.OS === 'ios' && composerKeyboardInset > 0 && { paddingBottom: composerKeyboardInset }]}>
+    <KeyboardAvoidingView testID="board-write-keyboard-viewport" style={[styles.composerContainer, styles.boardDarkPage]} enabled={Platform.OS === 'android'} behavior={Platform.OS === 'android' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+      <ScrollView testID="board-write-form" style={styles.flex} contentContainerStyle={[styles.composerPage, styles.boardDarkPage]} automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.composerTitle, styles.boardDarkTitle]}>익명 글쓰기</Text>
+        <Text style={[styles.composerSubtitle, styles.boardDarkMuted]}>익명으로 편하게 나눌 이야기를 작성해 주세요.</Text>
+        <View testID="board-write-photo-field"><Text style={[styles.inputLabel, styles.boardDarkBody]}>사진 (선택)</Text>{imageUri ? <View style={styles.photoPreviewWrap}><Image source={{ uri: imageUri }} resizeMode="cover" style={styles.photoPreview} /><Pressable style={styles.removePhotoButton} onPress={() => { setImageUri(null); setImageMimeType(null) }}><Text style={styles.removePhotoText}>사진 삭제</Text></Pressable></View> : <Pressable style={[styles.photoPickerButton, styles.boardDarkInput]} onPress={() => void choosePhoto()}><Text style={[styles.photoPickerIcon, styles.boardAccentText]}>▧</Text><Text style={[styles.photoPickerText, styles.boardDarkBody]}>사진 첨부</Text></Pressable>}</View>
+        <Text style={[styles.inputLabel, styles.boardDarkBody]}>제목</Text><TextInput ref={composerTitleInputRef} testID="board-write-title-input" value={title} onChangeText={setTitle} maxLength={60} returnKeyType="next" onSubmitEditing={() => composerBodyInputRef.current?.focus()} autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none" keyboardAppearance="dark" placeholder="제목을 입력하세요." placeholderTextColor="#7F8B93" style={[styles.titleInput, styles.boardDarkInput]} />
+        <Text style={[styles.inputLabel, styles.boardDarkBody]}>내용</Text><TextInput ref={composerBodyInputRef} testID="board-write-body-input" value={body} onChangeText={setBody} multiline maxLength={500} keyboardAppearance="dark" placeholder="자유롭게 이야기를 남겨주세요." placeholderTextColor="#7F8B93" style={[styles.postInput, styles.boardDarkInput]} />
+        <Text style={styles.counter}>{body.length}/500</Text>
+      </ScrollView>
+      {renderComposerActions()}
+    </KeyboardAvoidingView>
+  </InsetSafeAreaView>
+
   return <View style={[styles.page, styles.boardDarkPage]}>
-    <View style={styles.header}><View><Text style={[styles.title, styles.boardDarkTitle]}>익명 게시판</Text><Text style={[styles.subtitle, styles.boardDarkMuted]}>익명으로 편하게 이야기를 나눠요</Text></View><View style={styles.boardHeaderActions}><Pressable accessibilityRole="button" accessibilityLabel="게시판 새로고침" accessibilityState={{ busy: refreshing, disabled: refreshing }} disabled={refreshing} onPress={() => void refreshBoardList()} style={({ pressed }) => [styles.boardRefreshButton, pressed && !refreshing && styles.boardHeaderButtonPressed]}>{refreshing ? <ActivityIndicator size="small" color="#7DD3FC" /> : <Text style={styles.boardRefreshIcon}>↻</Text>}</Pressable><Pressable style={({ pressed }) => [styles.writeButton, styles.boardAccentButton, pressed && styles.boardHeaderButtonPressed]} onPress={() => setComposerVisible(true)}><Text style={styles.writeButtonText}>글쓰기</Text></Pressable></View></View>
+    <View style={styles.header}><View><Text style={[styles.title, styles.boardDarkTitle]}>익명 게시판</Text><Text style={[styles.subtitle, styles.boardDarkMuted]}>익명으로 편하게 이야기를 나눠요</Text></View><View style={styles.boardHeaderActions}><Pressable accessibilityRole="button" accessibilityLabel="게시판 새로고침" accessibilityState={{ busy: refreshing, disabled: refreshing }} disabled={refreshing} onPress={() => void refreshBoardList()} style={({ pressed }) => [styles.boardRefreshButton, pressed && !refreshing && styles.boardHeaderButtonPressed]}>{refreshing ? <ActivityIndicator size="small" color="#7DD3FC" /> : <Text style={styles.boardRefreshIcon}>↻</Text>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel="글쓰기" style={({ pressed }) => [styles.writeButton, styles.boardAccentButton, pressed && styles.boardHeaderButtonPressed]} onPress={openComposer}><Text style={styles.writeButtonText}>글쓰기</Text></Pressable></View></View>
     <View style={styles.boardFilterArea}>
-      <View style={styles.boardFilterBar}><Pressable accessibilityRole="button" accessibilityLabel={`${i18n.language === 'ko' ? '국가 필터' : 'Country filter'}: ${countryLabels[countryFilter]}`} accessibilityState={{ expanded: countryPickerVisible }} onPress={chooseCountryFilter} style={[styles.boardFilterButton, styles.boardCountryButton]}><Text numberOfLines={1} style={[styles.boardFilterText, styles.boardCountryText]}>{i18n.language === 'ko' ? '국가' : 'Country'}·{countryShortLabels[countryFilter]}</Text><DropdownChevron color="#9EABB3" expanded={countryPickerVisible} /></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: boardFilter === '전체' }} onPress={() => setBoardFilter('전체')} style={[styles.boardFilterButton, boardFilter === '전체' && styles.boardFilterButtonActive]}><Text style={[styles.boardFilterText, boardFilter === '전체' && styles.boardFilterTextActive]}>전체</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: boardFilter === '인기' }} onPress={() => setBoardFilter('인기')} style={[styles.boardFilterButton, boardFilter === '인기' && styles.boardFilterButtonActive]}><Text style={[styles.boardFilterText, boardFilter === '인기' && styles.boardFilterTextActive]}>인기</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={searchVisible ? '게시판 검색 닫기' : '게시판 검색'} accessibilityState={{ expanded: searchVisible }} onPress={toggleSearch} style={[styles.boardFilterButton, styles.boardSearchButton, searchVisible && styles.boardSearchButtonActive]}><Text style={[styles.boardFilterText, styles.boardSearchButtonText, searchVisible && styles.boardFilterTextActive]}>⌕ 검색</Text></Pressable></View>
+      <View style={styles.boardFilterBar}><Pressable accessibilityRole="button" accessibilityLabel={`${i18n.language === 'ko' ? '국가 필터' : 'Country filter'}: ${countryLabels[countryFilter]}`} accessibilityState={{ expanded: countryPickerVisible }} onPress={chooseCountryFilter} style={[styles.boardFilterButton, styles.boardCountryButton]}><Text numberOfLines={1} style={[styles.boardFilterText, styles.boardCountryText]}>{i18n.language === 'ko' ? '국가' : 'Country'}·{countryShortLabels[countryFilter]}</Text><DropdownChevron color="#9EABB3" expanded={countryPickerVisible} /></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: boardFilter === '전체', busy: boardFilter === '전체' && refreshing }} onPress={() => selectBoardFilter('전체')} style={[styles.boardFilterButton, boardFilter === '전체' && styles.boardFilterButtonActive]}><Text style={[styles.boardFilterText, boardFilter === '전체' && styles.boardFilterTextActive]}>전체</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: boardFilter === '인기', busy: boardFilter === '인기' && refreshing }} onPress={() => selectBoardFilter('인기')} style={[styles.boardFilterButton, boardFilter === '인기' && styles.boardFilterButtonActive]}><Text style={[styles.boardFilterText, boardFilter === '인기' && styles.boardFilterTextActive]}>인기</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={searchVisible ? '게시판 검색 닫기' : '게시판 검색'} accessibilityState={{ expanded: searchVisible }} onPress={toggleSearch} style={[styles.boardFilterButton, styles.boardSearchButton, searchVisible && styles.boardSearchButtonActive]}><Text style={[styles.boardFilterText, styles.boardSearchButtonText, searchVisible && styles.boardFilterTextActive]}>⌕ 검색</Text></Pressable></View>
       {searchVisible && <View style={styles.boardSearchRow}><TextInput ref={searchInputRef} value={searchQuery} onChangeText={setSearchQuery} maxLength={60} returnKeyType="search" onSubmitEditing={() => Keyboard.dismiss()} autoCorrect={false} autoCapitalize="none" keyboardAppearance="dark" placeholder="제목, 내용, 작성자 검색" placeholderTextColor="#7F8B93" style={[styles.boardSearchInput, styles.boardDarkInput]} /><Pressable accessibilityRole="button" accessibilityLabel={searchQuery ? '검색어 지우기' : '검색 닫기'} hitSlop={8} onPress={() => searchQuery ? setSearchQuery('') : toggleSearch()} style={styles.boardSearchClear}><Text style={styles.boardSearchClearText}>{searchQuery ? '×' : '닫기'}</Text></Pressable></View>}
     </View>
     {loading ? <View style={styles.center}><ActivityIndicator color="#7DD3FC" /></View> : <FlatList data={visiblePosts} keyExtractor={item => item.id} contentContainerStyle={styles.postList} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" refreshing={refreshing} onRefresh={() => void refreshBoardList()} alwaysBounceVertical overScrollMode="always" ListEmptyComponent={<Text style={[styles.empty, styles.boardDarkMuted]}>{searchQuery.trim() ? `“${searchQuery.trim()}” 검색 결과가 없어요.` : boardFilter === '인기' ? '아직 인기글이 없어요.' : <>아직 게시글이 없어요.{`\n`}첫 글을 작성해 보세요.</>}</Text>} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${item.title} 게시글 열기`} onPress={() => openPost(item)} style={({ pressed }) => [styles.post, styles.boardDarkCard, pressed && styles.postPressed]}>
@@ -674,21 +735,7 @@ export function Board() {
       <View style={styles.authorRow}>{item.author_id !== userId ? <Pressable hitSlop={8} onPress={event => { event.stopPropagation(); openNicknameMenu({ postId: item.id, authorId: item.author_id, nickname: item.nickname, topic: item.body, contentType: 'post', contentId: item.id }) }}><Text style={[styles.postName, styles.selectableName, { color: anonymousColor(item.gender) }]}>{item.nickname}</Text></Pressable> : <Text style={[styles.postName, { color: anonymousColor(item.gender) }]}>{item.nickname}</Text>}{item.author_id === userId && <Pressable hitSlop={10} onPress={event => { event.stopPropagation(); removePost(item) }}><Text style={styles.deleteText}>삭제</Text></Pressable>}</View>
       <View style={[styles.statRow, styles.boardDarkDivider]}><View style={styles.statItem}><Text style={styles.statIcon}>◉</Text><Text style={styles.statText}>{item.view_count}</Text></View><Pressable style={styles.statItem} onPress={event => { event.stopPropagation(); void toggleLike(item) }}><Text style={[styles.likeIcon, item.liked_by_me && styles.likeIconActive]}>{item.liked_by_me ? '♥' : '♡'}</Text><Text style={[styles.statText, item.liked_by_me && styles.likeTextActive]}>{item.like_count}</Text></Pressable><View style={styles.statItem}><Text style={styles.statIcon}>💬</Text><Text style={styles.statText}>{item.comment_count}</Text></View><Text style={styles.elapsedText}>{elapsed(item.created_at)}</Text></View>
     </Pressable>} />}
-    <Modal visible={composerVisible} animationType="slide" presentationStyle="fullScreen" onRequestClose={closeComposer}>
-      <InsetSafeAreaView edges={['top', 'bottom']} style={[styles.composerSafe, styles.boardDarkPage]}>
-        <KeyboardAvoidingView style={[styles.composerContainer, styles.boardDarkPage]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-          <ScrollView style={styles.flex} contentContainerStyle={[styles.composerPage, styles.boardDarkPage, Platform.OS === 'ios' && styles.composerPageIos]} keyboardShouldPersistTaps="handled" keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} showsVerticalScrollIndicator={false}>
-            <Text style={[styles.composerTitle, styles.boardDarkTitle]}>익명 글쓰기</Text>
-            <Text style={[styles.inputLabel, styles.boardDarkBody]}>제목</Text><TextInput value={title} onChangeText={setTitle} onFocus={() => setComposerFocusedInput('title')} maxLength={60} returnKeyType="next" autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none" keyboardAppearance="dark" inputAccessoryViewID={Platform.OS === 'ios' ? BOARD_COMPOSER_ACCESSORY_ID : undefined} placeholder="제목을 입력하세요." placeholderTextColor="#7F8B93" style={[styles.titleInput, styles.boardDarkInput]} />
-            <Text style={[styles.inputLabel, styles.boardDarkBody]}>내용</Text><TextInput value={body} onChangeText={setBody} onFocus={() => setComposerFocusedInput('body')} multiline maxLength={500} keyboardAppearance="dark" placeholder="자유롭게 이야기를 남겨주세요." placeholderTextColor="#7F8B93" style={[styles.postInput, styles.boardDarkInput]} />
-            <Text style={styles.counter}>{body.length}/500</Text>
-            <Text style={[styles.inputLabel, styles.boardDarkBody]}>사진 (선택)</Text>{imageUri ? <View style={styles.photoPreviewWrap}><Image source={{ uri: imageUri }} resizeMode="cover" style={styles.photoPreview} /><Pressable style={styles.removePhotoButton} onPress={() => { setImageUri(null); setImageMimeType(null) }}><Text style={styles.removePhotoText}>사진 삭제</Text></Pressable></View> : <Pressable style={[styles.photoPickerButton, styles.boardDarkInput]} onPress={() => void choosePhoto()}><Text style={[styles.photoPickerIcon, styles.boardAccentText]}>▧</Text><Text style={[styles.photoPickerText, styles.boardDarkBody]}>사진 첨부</Text></Pressable>}
-          </ScrollView>
-          {!(Platform.OS === 'ios' && composerKeyboardVisible && composerFocusedInput === 'title') && renderComposerActions()}
-        </KeyboardAvoidingView>
-        {Platform.OS === 'ios' && <InputAccessoryView nativeID={BOARD_COMPOSER_ACCESSORY_ID}>{renderComposerActions()}</InputAccessoryView>}
-      </InsetSafeAreaView>
-    </Modal>
+    <Modal testID="board-write-modal" visible={composerVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeComposer}>{renderComposer()}</Modal>
     <Modal visible={countryPickerVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setCountryPickerVisible(false)}>
       <Pressable style={styles.boardCountryPickerOverlay} onPress={() => setCountryPickerVisible(false)}>
         <Pressable style={styles.boardCountryPickerSheet} onPress={event => event.stopPropagation()}>
@@ -713,22 +760,22 @@ export function Board() {
         </Pressable>
       </Pressable>
     </Modal>
-    <CommentSheet post={selectedPost} userId={userId} onClose={() => setSelectedPost(null)} onChanged={refresh} onRequest={openNicknameMenu} onLike={post => void toggleLike(post)} onDislike={post => void toggleDislike(post)} onDelete={removePost} onImagePress={setPreviewImageUrl} />
+    {isActive && <><CommentSheet post={selectedPost} userId={userId} onClose={() => setSelectedPost(null)} onChanged={refresh} onRequest={openNicknameMenu} onLike={post => void toggleLike(post)} onDislike={post => void toggleDislike(post)} onDelete={removePost} onImagePress={setPreviewImageUrl} />
     <BoardImageViewer uri={previewImageUrl} onClose={() => setPreviewImageUrl(null)} />
-    <BoardRequestComposer target={requestTarget} onClose={() => setRequestTarget(null)} />
+    <BoardRequestComposer target={requestTarget} onClose={() => setRequestTarget(null)} /></>}
   </View>
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#FFF7F9' }, page: { flex: 1, backgroundColor: '#FFF7F9' }, header: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 15, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }, title: { color: '#3B1F2B', fontSize: 25, lineHeight: 32, fontWeight: '900', letterSpacing: -0.4 }, subtitle: { color: '#B84A67', fontSize: 12, lineHeight: 17, fontWeight: '700', marginTop: 3 }, boardHeaderActions: { marginTop: 3, marginLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }, boardRefreshButton: { width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }, boardRefreshIcon: { color: '#7DD3FC', fontSize: 25, lineHeight: 30, fontWeight: '800' }, boardHeaderButtonPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] }, writeButton: { width: 78, height: 40, backgroundColor: '#D94F70', borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowColor: '#9F2949', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, writeButtonText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '900' }, boardFilterArea: { paddingBottom: 16 }, boardFilterBar: { paddingHorizontal: 10, gap: 4, flexDirection: 'row', alignItems: 'center' }, boardFilterButton: { flex: 1, minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: '#39444C', backgroundColor: '#20272C', alignItems: 'center', justifyContent: 'center' }, boardFilterButtonActive: { borderColor: '#0284A8', backgroundColor: '#0284A8' }, boardFilterText: { color: '#9EABB3', fontSize: 12, fontWeight: '800' }, boardFilterTextActive: { color: '#FFFFFF', fontWeight: '900' }, boardSearchButton: { flex: 1.2, borderColor: '#52616B' }, boardSearchButtonActive: { borderColor: '#38BDF8', backgroundColor: '#075B75' }, boardSearchButtonText: { fontSize: 11 }, boardSearchRow: { minHeight: 46, marginHorizontal: 10, marginTop: 9, paddingLeft: 13, paddingRight: 5, borderRadius: 14, borderWidth: 1, borderColor: '#39444C', backgroundColor: '#20272C', flexDirection: 'row', alignItems: 'center' }, boardSearchInput: { flex: 1, height: 44, paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', color: '#F1F5F7', fontSize: 14 }, boardSearchClear: { minWidth: 44, minHeight: 38, alignItems: 'center', justifyContent: 'center' }, boardSearchClearText: { color: '#7DD3FC', fontSize: 13, fontWeight: '900' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, postList: { paddingHorizontal: 20, paddingBottom: 25, flexGrow: 1 }, post: { backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#F0D9E1', borderRadius: 20, paddingHorizontal: 17, paddingVertical: 16, marginBottom: 11, shadowColor: '#7B3048', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, postPressed: { opacity: 0.78, transform: [{ scale: 0.995 }] }, postHeadline: { color: '#3B1F2B', fontSize: 17, lineHeight: 24, fontWeight: '900' }, postPreview: { color: '#806B73', fontSize: 13, lineHeight: 20, marginTop: 6 }, authorRow: { minHeight: 27, marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, postName: { color: '#68515A', fontSize: 13, fontWeight: '900' }, postBody: { color: '#3B2730', fontSize: 15, lineHeight: 22, marginTop: 10 }, statRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', marginTop: 7, borderTopWidth: 1, borderTopColor: '#F5E7EC', paddingTop: 7 }, statItem: { flexDirection: 'row', alignItems: 'center', marginRight: 15, minHeight: 26 }, statIcon: { color: '#AD98A0', fontSize: 13, marginRight: 4 }, likeIcon: { color: '#AD98A0', fontSize: 17, marginRight: 4 }, likeIconActive: { color: '#D94F70' }, statText: { color: '#AD98A0', fontSize: 11, fontWeight: '700' }, likeTextActive: { color: '#D94F70' }, elapsedText: { color: '#AD98A0', fontSize: 11, marginLeft: 'auto' }, commentCount: { color: '#D94F70', fontSize: 11, fontWeight: '800', marginTop: 12 }, deleteText: { color: '#DC2626', fontSize: 11, fontWeight: '800' }, empty: { textAlign: 'center', color: '#A58D96', lineHeight: 21, marginTop: 65 }, overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }, composerScroll: { width: '100%' }, composerScrollContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, composer: { width: '100%', backgroundColor: '#FFF7F9', borderRadius: 20, padding: 19 }, composerTitle: { color: '#3B1F2B', fontSize: 19, fontWeight: '900', marginBottom: 6 }, inputLabel: { color: '#68515A', fontSize: 12, fontWeight: '800', marginTop: 10, marginBottom: 7 }, titleInput: { height: 48, backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#ECD7DE', borderRadius: 13, paddingHorizontal: 14, color: '#3B1F2B', fontSize: 15, fontWeight: '700' }, postInput: { minHeight: 130, backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#ECD7DE', borderRadius: 15, padding: 14, textAlignVertical: 'top', color: '#3B1F2B', fontSize: 15 }, counter: { color: '#A58D96', alignSelf: 'flex-end', fontSize: 10, marginTop: 5 }, actions: { flexDirection: 'row', gap: 9, marginTop: 14 }, cancelButton: { flex: 1, minHeight: 48, backgroundColor: '#EFE5E8', borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' }, cancelText: { color: '#68515A', fontSize: 14, fontWeight: '900' }, submitButton: { flex: 2, backgroundColor: '#D94F70', borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }, submitText: { color: '#FFFFFF', fontWeight: '900' }, disabled: { opacity: 0.4 }, modalHeader: { height: 64, backgroundColor: '#FFFCFD', borderBottomWidth: 1, borderBottomColor: '#F0DDE3', paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, headerActionButton: { width: 76, height: 64, justifyContent: 'center', paddingLeft: 10 }, close: { color: '#D94F70', fontSize: 15, fontWeight: '900' }, modalTitle: { color: '#3B1F2B', fontSize: 16, fontWeight: '900' }, spacer: { width: 76 }, commentList: { padding: 18, flexGrow: 1 }, originalPost: { backgroundColor: '#FFF0F4', borderRadius: 17, padding: 17, marginBottom: 16, borderWidth: 1, borderColor: '#F3CBD7', borderLeftWidth: 5, borderLeftColor: '#D94F70' }, originalBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, originalBadge: { color: '#FFFFFF', backgroundColor: '#D94F70', borderRadius: 8, overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: '900' }, originalTime: { color: '#A58D96', fontSize: 11 }, originalTitle: { color: '#3B1F2B', fontSize: 19, lineHeight: 27, fontWeight: '900', marginBottom: 10 }, originalBody: { color: '#513A43', fontSize: 15, lineHeight: 23 }, comment: { backgroundColor: '#FFFCFD', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, marginBottom: 7, marginLeft: 12, borderWidth: 1, borderColor: '#ECDDE2', borderLeftWidth: 3, borderLeftColor: '#DFC1CA' }, commentBadgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 }, commentBadge: { color: '#806B73', backgroundColor: '#F8EFF2', borderRadius: 7, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 2, fontSize: 9, fontWeight: '800' }, commentName: { color: '#806B73', fontSize: 11, fontWeight: '800' }, commentBody: { color: '#3B2730', fontSize: 14, lineHeight: 19 }, commentBar: { backgroundColor: '#FFFCFD', borderTopWidth: 1, borderTopColor: '#F0DDE3', padding: 10, flexDirection: 'row', alignItems: 'center' }, commentInput: { flex: 1, backgroundColor: '#F8EFF2', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: '#3B1F2B' }, commentSend: { backgroundColor: '#D94F70', borderRadius: 18, paddingHorizontal: 15, paddingVertical: 10, marginLeft: 8 }, commentSendText: { color: '#FFFFFF', fontWeight: '900' },
+  flex: { flex: 1 }, safe: { flex: 1, backgroundColor: '#FFF7F9' }, page: { flex: 1, backgroundColor: '#FFF7F9' }, header: { ...mainTabHeaderSpacing, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }, title: { ...mainTabTitleStyle }, subtitle: { ...mainTabSubtitleStyle, color: '#B84A67' }, boardHeaderActions: { marginTop: 3, marginLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }, boardRefreshButton: { width: 38, height: 40, alignItems: 'center', justifyContent: 'center' }, boardRefreshIcon: { color: '#7DD3FC', fontSize: 25, lineHeight: 30, fontWeight: '800' }, boardHeaderButtonPressed: { opacity: 0.72, transform: [{ scale: 0.97 }] }, writeButton: { ...mainTabHeaderActionStyle, width: 78, backgroundColor: '#D94F70', shadowColor: '#9F2949', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 3 }, writeButtonText: { ...mainTabHeaderActionTextStyle, color: '#FFFFFF' }, boardFilterArea: { paddingBottom: mainTabListTopGap }, boardFilterBar: { paddingHorizontal: 10, gap: 4, flexDirection: 'row', alignItems: 'center' }, boardFilterButton: { flex: 1, minHeight: 36, borderRadius: 18, borderWidth: 1, borderColor: '#39444C', backgroundColor: '#20272C', alignItems: 'center', justifyContent: 'center' }, boardFilterButtonActive: { borderColor: '#0284A8', backgroundColor: '#0284A8' }, boardFilterText: { color: '#9EABB3', fontSize: 12, fontWeight: '800' }, boardFilterTextActive: { color: '#FFFFFF', fontWeight: '900' }, boardSearchButton: { flex: 1.2, borderColor: '#52616B' }, boardSearchButtonActive: { borderColor: '#38BDF8', backgroundColor: '#075B75' }, boardSearchButtonText: { fontSize: 11 }, boardSearchRow: { minHeight: 46, marginHorizontal: 10, marginTop: 9, paddingLeft: 13, paddingRight: 5, borderRadius: 14, borderWidth: 1, borderColor: '#39444C', backgroundColor: '#20272C', flexDirection: 'row', alignItems: 'center' }, boardSearchInput: { flex: 1, height: 44, paddingVertical: 0, paddingHorizontal: 0, borderWidth: 0, backgroundColor: 'transparent', color: '#F1F5F7', fontSize: 14 }, boardSearchClear: { minWidth: 44, minHeight: 38, alignItems: 'center', justifyContent: 'center' }, boardSearchClearText: { color: '#7DD3FC', fontSize: 13, fontWeight: '900' }, center: { flex: 1, alignItems: 'center', justifyContent: 'center' }, postList: { paddingHorizontal: mainTabListHorizontalInset, paddingBottom: 25, flexGrow: 1 }, post: { backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#F0D9E1', borderRadius: 20, paddingHorizontal: 17, paddingVertical: 16, marginBottom: 11, shadowColor: '#7B3048', shadowOpacity: 0.07, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, postPressed: { opacity: 0.78, transform: [{ scale: 0.995 }] }, postHeadline: { color: '#3B1F2B', fontSize: 17, lineHeight: 24, fontWeight: '900' }, postPreview: { color: '#806B73', fontSize: 13, lineHeight: 20, marginTop: 6 }, authorRow: { minHeight: 27, marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, postName: { color: '#68515A', fontSize: 13, fontWeight: '900' }, postBody: { color: '#3B2730', fontSize: 15, lineHeight: 22, marginTop: 10 }, statRow: { minHeight: 30, flexDirection: 'row', alignItems: 'center', marginTop: 7, borderTopWidth: 1, borderTopColor: '#F5E7EC', paddingTop: 7 }, statItem: { flexDirection: 'row', alignItems: 'center', marginRight: 15, minHeight: 26 }, statIcon: { color: '#AD98A0', fontSize: 13, marginRight: 4 }, likeIcon: { color: '#AD98A0', fontSize: 17, marginRight: 4 }, likeIconActive: { color: '#D94F70' }, statText: { color: '#AD98A0', fontSize: 11, fontWeight: '700' }, likeTextActive: { color: '#D94F70' }, elapsedText: { color: '#AD98A0', fontSize: 11, marginLeft: 'auto' }, commentCount: { color: '#D94F70', fontSize: 11, fontWeight: '800', marginTop: 12 }, deleteText: { color: '#DC2626', fontSize: 11, fontWeight: '800' }, empty: { textAlign: 'center', color: '#A58D96', lineHeight: 21, marginTop: 65 }, overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' }, composerScroll: { width: '100%' }, composerScrollContent: { flexGrow: 1, justifyContent: 'center', padding: 22 }, composer: { width: '100%', backgroundColor: '#FFF7F9', borderRadius: 20, padding: 19 }, composerTitle: { color: '#3B1F2B', fontSize: 19, fontWeight: '900', marginBottom: 6 }, inputLabel: { color: '#68515A', fontSize: 12, fontWeight: '800', marginTop: 10, marginBottom: 7 }, titleInput: { height: 48, backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#ECD7DE', borderRadius: 13, paddingHorizontal: 14, color: '#3B1F2B', fontSize: 15, fontWeight: '700' }, postInput: { minHeight: 130, backgroundColor: '#FFFCFD', borderWidth: 1, borderColor: '#ECD7DE', borderRadius: 15, padding: 14, textAlignVertical: 'top', color: '#3B1F2B', fontSize: 15 }, counter: { color: '#A58D96', alignSelf: 'flex-end', fontSize: 10, marginTop: 5 }, actions: { flexDirection: 'row', gap: 9, marginTop: 14 }, cancelButton: { flex: 1, minHeight: 48, backgroundColor: '#EFE5E8', borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' }, cancelText: { color: '#68515A', fontSize: 14, fontWeight: '900' }, submitButton: { flex: 2, backgroundColor: '#D94F70', borderRadius: 12, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }, submitText: { color: '#FFFFFF', fontWeight: '900' }, disabled: { opacity: 0.4 }, modalHeader: { height: 64, backgroundColor: '#FFFCFD', borderBottomWidth: 1, borderBottomColor: '#F0DDE3', paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, headerActionButton: { width: 76, height: 64, justifyContent: 'center', paddingLeft: 10 }, close: { color: '#D94F70', fontSize: 15, fontWeight: '900' }, modalTitle: { color: '#3B1F2B', fontSize: 16, fontWeight: '900' }, spacer: { width: 76 }, commentList: { padding: 18, flexGrow: 1 }, originalPost: { backgroundColor: '#FFF0F4', borderRadius: 17, padding: 17, marginBottom: 16, borderWidth: 1, borderColor: '#F3CBD7', borderLeftWidth: 5, borderLeftColor: '#D94F70' }, originalBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }, originalBadge: { color: '#FFFFFF', backgroundColor: '#D94F70', borderRadius: 8, overflow: 'hidden', paddingHorizontal: 9, paddingVertical: 4, fontSize: 11, fontWeight: '900' }, originalTime: { color: '#A58D96', fontSize: 11 }, originalTitle: { color: '#3B1F2B', fontSize: 19, lineHeight: 27, fontWeight: '900', marginBottom: 10 }, originalBody: { color: '#513A43', fontSize: 15, lineHeight: 23 }, comment: { backgroundColor: '#FFFCFD', borderRadius: 12, paddingHorizontal: 13, paddingVertical: 9, marginBottom: 7, marginLeft: 12, borderWidth: 1, borderColor: '#ECDDE2', borderLeftWidth: 3, borderLeftColor: '#DFC1CA' }, commentBadgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 }, commentBadge: { color: '#806B73', backgroundColor: '#F8EFF2', borderRadius: 7, overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 2, fontSize: 9, fontWeight: '800' }, commentName: { color: '#806B73', fontSize: 11, fontWeight: '800' }, commentBody: { color: '#3B2730', fontSize: 14, lineHeight: 19 }, commentBar: { backgroundColor: '#FFFCFD', borderTopWidth: 1, borderTopColor: '#F0DDE3', padding: 10, flexDirection: 'row', alignItems: 'center' }, commentInput: { flex: 1, backgroundColor: '#F8EFF2', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, color: '#3B1F2B' }, commentSend: { backgroundColor: '#D94F70', borderRadius: 18, paddingHorizontal: 15, paddingVertical: 10, marginLeft: 8 }, commentSendText: { color: '#FFFFFF', fontWeight: '900' },
   bodyFirst: { marginTop: 0 }, authorBelow: { marginTop: 10 }, commentBodyOrdered: { marginTop: 5 }, commentFooter: { minHeight: 28, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, commentLikeButton: { minHeight: 28, flexDirection: 'row', alignItems: 'center' }, commentElapsed: { color: '#7F8B93', fontSize: 10 },
   boardDetailCommentDivider: { marginBottom: 10, borderBottomWidth: 1, borderBottomColor: '#333D44', paddingBottom: 8 }, boardDetailCommentDividerText: { color: '#B8C3C9', fontSize: 12, fontWeight: '900' },
   replyComment: { marginLeft: 34, borderLeftColor: '#38BDF8', backgroundColor: '#1C252B' }, replyBadge: { color: '#7DD3FC', backgroundColor: '#26343C' }, commentFooterActions: { flexDirection: 'row', alignItems: 'center', gap: 12 }, commentReplyButton: { minHeight: 28, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' }, commentReplyText: { color: '#7DD3FC', fontSize: 11, fontWeight: '900' }, commentComposerWrap: { borderTopWidth: 1, borderTopColor: '#333D44' }, replyingBar: { minHeight: 34, paddingLeft: 15, paddingRight: 12, backgroundColor: '#202A30', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, replyingText: { flex: 1, color: '#AAB6BD', fontSize: 11 }, replyingName: { color: '#7DD3FC', fontWeight: '900' }, replyingCancel: { color: '#9EABB3', fontSize: 22, lineHeight: 24, fontWeight: '700' },
-  composerSafe: { flex: 1, backgroundColor: '#FFF9F5' }, composerContainer: { flex: 1 }, composerPage: { flexGrow: 1, padding: 20, paddingTop: 24, paddingBottom: 28, backgroundColor: '#FFF9F5' }, composerPageIos: { paddingTop: 36 }, composerFooter: { backgroundColor: '#FFF9F5', borderTopWidth: 1, borderTopColor: '#EEE7E2', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, flexDirection: 'row', gap: 9 }, composerFooterIos: { paddingBottom: 22 },
+  composerSafe: { flex: 1, backgroundColor: '#FFF9F5' }, composerContainer: { flex: 1 }, composerPage: { padding: 20, paddingTop: 24, paddingBottom: 28, backgroundColor: '#FFF9F5' }, composerSubtitle: { fontSize: 13, lineHeight: 19, marginTop: 1, marginBottom: 8 }, composerFooter: { backgroundColor: '#FFF9F5', borderTopWidth: 1, borderTopColor: '#EEE7E2', paddingHorizontal: 20, paddingTop: 12, paddingBottom: 12, flexDirection: 'row', gap: 9 },
   postImage: { width: '100%', height: 180, borderRadius: 13, backgroundColor: '#F5F5F4', marginTop: 12 },
   detailImageButton: { width: '100%', height: 260, borderRadius: 14, marginTop: 14, overflow: 'hidden' },
   detailImage: { width: '100%', height: '100%', backgroundColor: '#F5F5F4' },
-  boardImageViewerFrame: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }, boardImageViewerSafe: { flex: 1 }, boardImageViewerEmbedded: { ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 100 }, boardImageViewerHeader: { minHeight: 72, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, boardImageViewerHeading: { flex: 1, marginRight: 12 }, boardImageViewerTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' }, boardImageViewerHint: { color: '#94A3B8', fontSize: 10, marginTop: 3 }, boardImageViewerClose: { minWidth: 54, minHeight: 42, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' }, boardImageViewerCloseText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' }, boardImageViewerArea: { flex: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, boardImageViewerImage: { width: '100%', height: '100%' },
+  boardImageViewerFrame: { flex: 1, backgroundColor: 'rgba(0,0,0,0.96)' }, boardImageViewerSafe: { flex: 1 }, boardImageViewerEmbedded: { ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 100 }, boardImageViewerHeader: { minHeight: 72, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, boardImageViewerHeaderAndroid: { minHeight: 62, paddingHorizontal: 16, paddingTop: 4 }, boardImageViewerHeading: { flex: 1, marginRight: 12 }, boardImageViewerTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' }, boardImageViewerHint: { color: '#94A3B8', fontSize: 10, marginTop: 3 }, boardImageViewerClose: { minWidth: 54, minHeight: 42, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' }, boardImageViewerCloseText: { color: '#FFFFFF', fontSize: 14, fontWeight: '900' }, boardImageViewerArea: { flex: 1, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }, boardImageViewerImage: { width: '100%', height: '100%' },
   photoPickerButton: { minHeight: 54, borderWidth: 1, borderStyle: 'dashed', borderColor: '#D6D3D1', borderRadius: 13, backgroundColor: '#FFFFFF', flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   photoPickerIcon: { color: '#F26B4B', fontSize: 20, marginRight: 8 },
   photoPickerText: { color: '#57534E', fontSize: 14, fontWeight: '800' },

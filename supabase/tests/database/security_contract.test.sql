@@ -12,7 +12,7 @@ select has_function('public', 'claim_device_welcome_points', array['text'], 'dev
 select has_function('public', 'delete_account_data', array['uuid'], 'server deletion RPC exists');
 select ok((select relrowsecurity from pg_class where oid = 'public.device_welcome_grants'::regclass), 'device ledger has RLS');
 select ok(not has_function_privilege('anon', 'public.claim_device_welcome_points(text)', 'EXECUTE'), 'anon cannot claim points');
-select ok(has_function_privilege('authenticated', 'public.claim_device_welcome_points(text)', 'EXECUTE'), 'authenticated user can claim points');
+select ok(not has_function_privilege('authenticated', 'public.claim_device_welcome_points(text)', 'EXECUTE'), 'legacy device claim is disabled');
 select ok(not has_function_privilege('authenticated', 'public.delete_account_data(uuid)', 'EXECUTE'), 'app user cannot run account cleanup directly');
 select ok(has_function_privilege('service_role', 'public.delete_account_data(uuid)', 'EXECUTE'), 'service role can run account cleanup');
 select ok(not has_table_privilege('authenticated', 'public.device_welcome_grants', 'SELECT'), 'app user cannot enumerate device hashes');
@@ -23,7 +23,7 @@ select has_function('public', 'restore_device_account', array['text'], 'device r
 select has_function('public', 'admin_delete_message_backups', array['bigint[]', 'text'], 'owner backup deletion RPC exists');
 select ok(not has_table_privilege('authenticated', 'public.device_point_wallets', 'SELECT'), 'app cannot enumerate device wallets');
 select ok(not has_table_privilege('authenticated', 'public.message_backups', 'SELECT'), 'app cannot read message backups');
-select ok(has_function_privilege('authenticated', 'public.restore_device_account(text)', 'EXECUTE'), 'authenticated user can request device recovery');
+select ok(not has_function_privilege('authenticated', 'public.restore_device_account(text)', 'EXECUTE'), 'device identity cannot recover a phone account');
 select has_column('public', 'messages', 'image_path', 'chat messages store a private image path');
 select has_column('public', 'messages', 'image_width', 'chat messages store image width');
 select has_column('public', 'messages', 'image_height', 'chat messages store image height');

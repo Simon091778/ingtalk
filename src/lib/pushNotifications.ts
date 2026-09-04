@@ -1,9 +1,11 @@
+import { getAccountId } from './phoneAuth'
 import { useEffect } from 'react'
 import { Alert, Platform } from 'react-native'
 import Constants, { ExecutionEnvironment } from 'expo-constants'
 import { supabase } from './supabase'
 import { captureAppError } from './observability'
 import { configureNotificationChannels, loadNotificationPreferences } from './notificationPreferences'
+import { shouldSuppressChatNotification } from './chatNotificationState'
 
 function isAndroidExpoGo() {
   return Platform.OS === 'android' && Constants.executionEnvironment === ExecutionEnvironment.StoreClient
@@ -13,7 +15,7 @@ function getProjectId() {
   return Constants.easConfig?.projectId ?? Constants.expoConfig?.extra?.eas?.projectId
 }
 
-export function useChatPushNotifications(enabled: boolean, openChats: () => void) {
+export function useChatPushNotifications(enabled: boolean, openChats: () => void, openChatRooms: () => void) {
   useEffect(() => {
     if (!enabled || !supabase || Platform.OS === 'web' || isAndroidExpoGo()) return
     const client = supabase
@@ -24,12 +26,15 @@ export function useChatPushNotifications(enabled: boolean, openChats: () => void
     const setup = async () => {
       const Notifications = await import('expo-notifications')
       Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldPlaySound: true,
-          shouldSetBadge: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
-        }),
+        handleNotification: async notification => {
+          const show = !shouldSuppressChatNotification(notification.request.content.data)
+          return {
+            shouldPlaySound: show,
+            shouldSetBadge: show,
+            shouldShowBanner: show,
+            shouldShowList: show,
+          }
+        },
       })
 
       if (Platform.OS === 'android') {
@@ -46,17 +51,14 @@ export function useChatPushNotifications(enabled: boolean, openChats: () => void
         return
       }
 
-      const { data: sessionData } = await client.auth.getSession()
-      const userId = sessionData.session?.user.id
+      const userId = await getAccountId(client)
       if (!userId) return
 
       const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data
-      const { error } = await client.from('push_tokens').upsert({
-        user_id: userId,
-        token,
-        platform: Platform.OS,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,token' })
+      if (!active) return
+      const { error } = await client.rpc('register_account_push_token', {
+        push_token: token, device_platform: Platform.OS,
+      })
       if (error && !error.message.includes('push_tokens')) throw error
 
       if (!active) return
@@ -64,11 +66,13 @@ export function useChatPushNotifications(enabled: boolean, openChats: () => void
       responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
         const kind = response.notification.request.content.data?.kind
         if (kind === 'chat_request' || kind === 'message') openChats()
+        if (kind === 'open_chat_message') openChatRooms()
       })
 
       const lastResponse = await Notifications.getLastNotificationResponseAsync()
       const lastKind = lastResponse?.notification.request.content.data?.kind
       if (lastKind === 'chat_request' || lastKind === 'message') openChats()
+      if (lastKind === 'open_chat_message') openChatRooms()
     }
 
     void setup().catch(reason => {
@@ -82,5 +86,5 @@ export function useChatPushNotifications(enabled: boolean, openChats: () => void
       receivedSubscription?.remove()
       responseSubscription?.remove()
     }
-  }, [enabled, openChats])
+  }, [enabled, openChats, openChatRooms])
 }

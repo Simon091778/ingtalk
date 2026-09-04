@@ -41,8 +41,8 @@ export function LegalSettings() {
       <Text style={styles.chevron}>›</Text>
     </Pressable>
 
-    <Modal visible={visible} animationType={Platform.OS === 'android' ? 'fade' : closingBySwipe ? 'none' : 'slide'} statusBarTranslucent={false} onRequestClose={() => setVisible(false)}>
-      <SwipeDismissView onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}>
+    <Modal visible={visible} animationType="none" statusBarTranslucent={false} onRequestClose={() => setVisible(false)}>
+      <SwipeDismissView visible={visible} onDismissStart={() => setClosingBySwipe(true)} onDismiss={() => setVisible(false)}>
       <SafeAreaView style={styles.modalSafe} edges={['bottom']}>
         <View style={[styles.modalTopArea, { paddingTop: modalTopInset }]}>
           <View style={styles.header}>

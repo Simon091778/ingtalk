@@ -15,10 +15,13 @@ begin
     'where blocker_id = previous_user or blocked_id = previous_user'
   );
 
-  if fixed_definition = function_definition then
+  if fixed_definition = function_definition
+     and function_definition not like '%block.blocker_id = previous_user or block.blocked_id = previous_user%' then
     raise exception 'restore_device_account block predicate was not found';
   end if;
 
-  execute fixed_definition;
+  if fixed_definition <> function_definition then
+    execute fixed_definition;
+  end if;
 end;
 $$;
